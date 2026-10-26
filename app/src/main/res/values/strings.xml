@@ -1,0 +1,53 @@
+<resources>
+    <string name="app_name">HomeMoniTor</string>
+
+    <!-- Host / Hidden Service -->
+    <string name="tab_host">Gastgeber (Host)</string>
+    <string name="tab_viewer">Betrachter</string>
+    <string name="tab_scanner">Scanner</string>
+
+    <string name="btn_start_service">Versteckten Dienst starten</string>
+    <string name="btn_stop_service">Dienst stoppen</string>
+    <string name="btn_flip_camera">Kamera wechseln</string>
+    <string name="btn_snapshot">Aufnahme machen</string>
+    <string name="btn_show_qr">Onion-Adresse als QR anzeigen</string>
+    <string name="btn_hide_qr">QR ausblenden</string>
+
+    <string name="status_service_stopped">Dienst gestoppt.</string>
+    <string name="status_service_started">Lokaler Webserver läuft auf Port 8080.</string>
+    <string name="status_onion_address">Onion-Adresse:</string>
+    <string name="status_not_available">Nicht verfügbar (Orbot erforderlich).</string>
+    <string name="hint_configure_orbot">Tipp: In Orbot unter „Versteckte Dienste“ Port 8080 → 127.0.0.1:8080 eintragen.</string>
+
+    <!-- Viewer -->
+    <string name="viewer_title">Kamerabilder aus dem Tor-Netzwerk</string>
+    <string name="viewer_hint_onion">.onion-Adresse eingeben</string>
+    <string name="viewer_btn_load">Bild laden</string>
+    <string name="viewer_btn_save_galerie">In Galerie speichern</string>
+    <string name="viewer_no_image">Kein Bild geladen.</string>
+    <string name="viewer_saved">In Galerie gespeichert.</string>
+    <string name="viewer_saved_fail">Speichern fehlgeschlagen.</string>
+    <string name="viewer_empty">Keine gespeicherten Adressen.</string>
+
+    <!-- Scanner -->
+    <string name="scanner_title">QR-Code scannen (Onion-Adresse)</string>
+    <string name="scanner_btn_save">Onion-Adresse in Galerie speichern</string>
+    <string name="scanner_saved">QR-Code-Bild in Galerie gespeichert.</string>
+    <string name="scanner_invalid">Keine gültige Onion-Adresse erkannt.</string>
+    <string name="scanner_copied">Adresse in die Zwischenablage kopiert.</string>
+
+    <!-- Permissions -->
+    <string name="perm_camera_title">Kamera-Zugriff erforderlich</string>
+    <string name="perm_camera_msg">Diese App benötigt die Kamera, um Bilder aufzunehmen und QR-Codes zu scannen.</string>
+
+    <!-- Generic -->
+    <string name="ok">OK</string>
+    <string name="error">Fehler</string>
+    <string name="success">Erfolg</string>
+    <string name="front">Vorne</string>
+    <string name="back">Hinten</string>
+
+    <!-- Gallery -->
+    <string name="gallery_title">Gespeicherte Fotos</string>
+    <string name="gallery_empty">Keine gespeicherten Fotos.</string>
+</resources>
