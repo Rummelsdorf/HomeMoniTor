@@ -1,16 +1,23 @@
 package com.example.homemonitor
 
 import android.content.Context
+import android.content.SharedPreferences
+import android.security.KeyGenParameterSpec
+import android.security.KeyProperties
 import android.util.Log
 import java.io.*
 import java.net.Socket
+import kotlin.concurrent.thread
 
 /**
  * Best-Effort-Integration mit Orbot (Tor für Android).
  *
  * Orbot stellt standardmäßig einen Tor-Control-Port auf 127.0.0.1:9051 bereit.
- * Diese Klasse versucht, einen ephemeren Hidden Service (ADD_ONION) anzulegen,
+ * Diese Klasse versucht, einen Hidden Service (ADD_ONION) anzulegen,
  * der den lokalen Webserver (Port 8080) ins Tor-Netzwerk exponiert.
+ *
+ * Verwendet einen persistenten Onion-Schlüssel (pro Installation), damit die
+ * Onion-Adresse stabil bleibt. Fallback: ephemeral (ohne Schlüssel).
  *
  * Falls Orbot nicht läuft oder das Authentifizierungsschema nicht passt, bleibt
  * die Onion-Adresse leer. In diesem Fall muss der Nutzer in Orbot manuell unter
@@ -21,12 +28,19 @@ class OrbotHiddenService private constructor(context: Context) {
 
     private val context: Context
 
-    private var address: String? = null
+    @Volatile var address: String? = null
     private var serviceId: String? = null
-    private var running = false
+    @Volatile private var running: Boolean = false
+
+    private val prefs: SharedPreferences =
+        context.getSharedPreferences("homemonitor_prefs", Context.MODE_PRIVATE)
 
     companion object {
         @Volatile private var instance: OrbotHiddenService? = null
+
+        private const val KEY_ONION_KEY = "onion_key_v1"
+        private const val ONION_LIFETIME_SECONDS = 31536000
+
         fun init(context: Context): OrbotHiddenService {
             return instance ?: synchronized(this) {
                 instance ?: OrbotHiddenService(context.applicationContext).also { instance = it }
@@ -34,8 +48,6 @@ class OrbotHiddenService private constructor(context: Context) {
         }
         fun get(): OrbotHiddenService? = instance
     }
-
-    val address: String? get() = address
 
     fun start() {
         if (running) return
@@ -47,13 +59,49 @@ class OrbotHiddenService private constructor(context: Context) {
 
     fun stop() {
         running = false
+        val currentServiceId = serviceId
         address = null
         serviceId = null
+        if (currentServiceId != null) {
+            // Hidden Service beim Stop über den Tor Control Port entfernen
+            try {
+                val socket = Socket()
+                socket.connect(java.net.InetSocketAddress("127.0.0.1", 9051), 3000)
+                socket.soTimeout = 5000
+                val out = BufferedWriter(OutputStreamWriter(socket.outputStream, "UTF-8"))
+                val in = BufferedReader(InputStreamReader(socket.inputStream, "UTF-8"))
+                readUntil(in, "250")
+                out.write("DELONION $currentServiceId")
+                out.write("\r\n")
+                out.flush()
+                val resp = readLine(in)
+                Log.d("OrbotHiddenService", "DELONION Antwort: $resp")
+                socket.close()
+            } catch (e: Exception) {
+                Log.w("OrbotHiddenService", "DELONION fehlgeschlagen", e)
+            }
+        }
+    }
+
+    private fun getOrCreateOnionKey(): String? {
+        prefs.getString(KEY_ONION_KEY, null)?.let { return it }
+        return try {
+            val keyGen = KeyPairGenerator.getInstance("RSA")
+            val spec = KeyGenParameterSpec.Builder("homemonitor", 1024, KeyProperties.TYPE_RSA).build()
+            keyGen.initialize(spec)
+            val keyPair = keyGen.generateKeyPair()
+            val encoded = android.util.Base64.encodeToString(
+                keyPair.privateKey.encoded, android.util.Base64.DEFAULT)
+            prefs.edit().putString(KEY_ONION_KEY, encoded).apply()
+            encoded
+        } catch (e: Exception) {
+            null
+        }
     }
 
     private fun tryAddress() {
-        // 1) Einfacher Versuch über Orbot Control Port (9051), ohne Authentifizierung
-        address = tryControlPort()
+        // 1) Versuch über Orbot Control Port (9051); mit persistentem Key für stabile Adresse
+        address = tryControlPort(getOrCreateOnionKey())
         if (address != null) {
             Log.i("OrbotHiddenService", "Hidden Service aktiv: $address")
             return
@@ -61,7 +109,7 @@ class OrbotHiddenService private constructor(context: Context) {
         Log.w("OrbotHiddenService", "Orbot Control Port nicht erreichbar / AUTH fehlgeschlagen.")
     }
 
-    private fun tryControlPort(): String? {
+    private fun tryControlPort(onionKey: String?): String? {
         val socket = Socket()
         try {
             socket.connect(java.net.InetSocketAddress("127.0.0.1", 9051), 3000)
@@ -78,8 +126,9 @@ class OrbotHiddenService private constructor(context: Context) {
             val authResp = readLine(in)
             Log.d("OrbotHiddenService", "AUTH: $authResp")
 
-            // ADD_ONION: ephemerer Hidden Service, Port 8080 -> localhost:8080
-            out.write("ADD_ONION Port=8080,127.0.0.1:8080\r\n")
+            // ADD_ONION: Hidden Service, Port 8080 -> localhost:8080
+            // Mit persistiertem Key: stabile Onion-Adresse (v2). Ohne Key: ephemeral.
+            out.write(if (onionKey != null) "ADD_ONION $onionKey ${ONION_LIFETIME_SECONDS}\r\n" else "ADD_ONION Port=8080,127.0.0.1:8080\r\n")
             out.flush()
 
             var onion: String? = null
