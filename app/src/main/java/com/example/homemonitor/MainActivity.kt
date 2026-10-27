@@ -2,14 +2,18 @@ package com.example.homemonitor
 
 import android.Manifest
 import android.content.ContentUris
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
+import android.view.LayoutInflater
 import android.view.View
-import android.widget.ArrayAdapter
+import android.view.ViewGroup
+import android.widget.BaseAdapter
+import android.widget.ImageView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -25,10 +29,10 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var cameraManager: CameraManager
+    private lateinit var sensorManager: SensorManager
     private lateinit var localWebServer: LocalWebServer
     private lateinit var onionStore: OnionStore
-    private val galleryBitmaps = mutableListOf<Bitmap>()
-    private var latestJpeg: ByteArray? = null
+    @Volatile private var latestJpeg: ByteArray? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,7 +44,13 @@ class MainActivity : AppCompatActivity() {
         onionStore = OnionStore.get() ?: OnionStore.init(this)
         cameraManager = CameraManager.get() ?: CameraManager.init(this, binding.cameraPreview) { bytes -> latestJpeg = bytes }
         cameraManager.bindToLifecycle(this)
-        localWebServer = LocalWebServer.get() ?: LocalWebServer.init(LOCAL_PORT) { cam -> latestJpeg }
+        sensorManager = SensorManager.get() ?: SensorManager.init(this)
+        sensorManager.start()
+        localWebServer = LocalWebServer.get() ?: LocalWebServer.init(
+            LOCAL_PORT,
+            { cam -> latestJpeg },
+            { sensorManager.collectJson() }
+        )
 
         setupTabs()
         setupListeners()
@@ -55,7 +65,11 @@ class MainActivity : AppCompatActivity() {
     private fun setupTabs() {
         binding.btnTabHost.setOnClickListener { showTab(TAB_HOST) }
         binding.btnTabViewer.setOnClickListener { showTab(TAB_VIEWER) }
-        binding.btnTabScanner.setOnClickListener { showTab(TAB_SCANNER) }
+        binding.btnTabScanner.setOnClickListener { startQrScanner() }
+    }
+
+    private fun startQrScanner() {
+        startActivity(Intent(this, QrScannerActivity::class.java))
     }
 
     private fun showTab(index: Int) {
@@ -74,6 +88,7 @@ class MainActivity : AppCompatActivity() {
         binding.btnSnapshot.setOnClickListener { cameraManager.takeSnapshot() }
         binding.btnShowQr.setOnClickListener { showOnionQr() }
         binding.btnHideQr.setOnClickListener { binding.ivQr.visibility = View.GONE }
+        binding.btnReadSensors.setOnClickListener { readSensors() }
         binding.btnLoad.setOnClickListener { loadSnapshot() }
         binding.btnSaveGallery.setOnClickListener { saveCurrentSnapshotToGallery() }
     }
@@ -91,8 +106,12 @@ class MainActivity : AppCompatActivity() {
         binding.tvStatus.text = getString(R.string.status_service_stopped)
     }
 
-    private fun showOnionQr() {
-        val onion = onionStore.addresses.firstOrNull() ?: run {
+    private fun readSensors() {
+        val json = sensorManager.collectJson()
+        binding.tvSensors.text = json ?: getString(R.string.sensors_empty)
+    }
+
+    private fun showOnionQr() {        val onion = onionStore.addresses.firstOrNull() ?: run {
             binding.tvOnionAddress.text = getString(R.string.status_not_available)
             return
         }
@@ -101,10 +120,13 @@ class MainActivity : AppCompatActivity() {
         binding.ivQr.visibility = View.VISIBLE
     }
 
+    private fun decodeBitmap(bytes: ByteArray): Bitmap? =
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = 2 })
+
     private fun loadSnapshot() {
         val cam = binding.etOnion.text?.toString()?.trim()?.ifEmpty { null } ?: "back"
         val bytes = latestJpeg ?: return
-        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+        val bmp = decodeBitmap(bytes)
         if (bmp != null) {
             binding.ivViewerImage.setImageBitmap(bmp)
         }
@@ -112,7 +134,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun saveCurrentSnapshotToGallery() {
         val bytes = latestJpeg ?: return
-        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+        val bmp = decodeBitmap(bytes)
         val onion = binding.etOnion.text?.toString()?.trim()
         if (bmp != null && onion != null) {
             cameraManager.saveToGallery(bmp, onion)
@@ -143,16 +165,54 @@ class MainActivity : AppCompatActivity() {
                 val id = cursor.getLong(idColumn)
                 val name = cursor.getString(nameColumn) ?: continue
                 val uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
-                val bmp = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+                val bmp = contentResolver.openInputStream(uri)?.use { it.readBytes() }?.let { decodeBitmap(it) }
                 if (bmp != null) {
                     bitmaps.add(bmp)
                 }
             }
-            galleryBitmaps.clear()
-            galleryBitmaps.addAll(bitmaps)
-            binding.lvGallery.adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_list_item_1, galleryBitmaps)
+            val adapter = GalleryAdapter()
+            adapter.submit(bitmaps)
+            binding.lvGallery.adapter = adapter
             binding.tvGalleryEmpty.visibility = if (bitmaps.isEmpty()) View.VISIBLE else View.GONE
         }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_CAMERA) {
+            // Berechtigungsergebnis auswerten (z. B. Kamera später initialisieren)
+        }
+    }
+
+    private inner class GalleryAdapter : BaseAdapter<Bitmap> {
+        private val items = mutableListOf<Bitmap>()
+
+        fun submit(list: List<Bitmap>) {
+            items.clear()
+            items.addAll(list)
+            notifyDataSetChanged()
+        }
+
+        override fun getCount(): Int = items.size
+
+        override fun getItem(position: Int): Bitmap = items[position]
+
+        override fun getItemId(position: Int): Long = position.toLong()
+
+        override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
+            val imageView = LayoutInflater.from(parent?.context ?: contentContext)
+                .inflate(R.layout.item_gallery, parent, false) as ImageView
+            imageView.setImageBitmap(items[position])
+            return imageView
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // Sensoren freigeben
+        sensorManager.stop()
+        // Kamera-Executor / Singleton freigeben
+        cameraManager.shutdown()
     }
 
     private companion object {
