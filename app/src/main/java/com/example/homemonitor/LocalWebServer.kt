@@ -11,23 +11,30 @@ import kotlin.concurrent.thread
  * Endpunkte:
  *   GET /                     -> HTML-Statusseite
  *   GET /snapshot?cam=front|back -> aktuelles Kamerabild (JPEG)
+ *   GET /sensors              -> Werte lokaler Sensoren (JSON)
  *
  * Wird von Orbot als „Versteckter Dienst“ (Port 8080 -> 127.0.0.1:8080)
  * ins Tor-Netzwerk exponiert.
  */
 class LocalWebServer private constructor(
     private val port: Int,
-    private val snapshotProvider: (String) -> ByteArray?
+    private val snapshotProvider: (String) -> ByteArray?,
+    private val sensorProvider: () -> String?
 ) {
 
     private var serverSocket: ServerSocket? = null
-    private var running = false
+    @Volatile private var running = false
 
     companion object {
         @Volatile private var instance: LocalWebServer? = null
-        fun init(port: Int, snapshotProvider: (String) -> ByteArray?): LocalWebServer {
+        fun init(
+            port: Int,
+            snapshotProvider: (String) -> ByteArray?,
+            sensorProvider: () -> String?
+        ): LocalWebServer {
             return instance ?: synchronized(this) {
-                instance ?: LocalWebServer(port, snapshotProvider).also { instance = it }
+                instance ?: LocalWebServer(port, snapshotProvider, sensorProvider)
+                    .also { instance = it }
             }
         }
         fun get(): LocalWebServer? = instance
@@ -70,6 +77,10 @@ class LocalWebServer private constructor(
             val requestLine = input.readLine() ?: return
             val parts = requestLine.split(" ").toList()
             if (parts.size < 2) return
+            if (parts[0] != "GET") {
+                sendResponse(output, 405, "text/plain", "Method Not Allowed".toByteArray())
+                return
+            }
             val path = parts[1]
             val url = java.net.URI(path)
             val query = url.query ?: ""
@@ -81,6 +92,14 @@ class LocalWebServer private constructor(
                     sendResponse(output, 404, "text/plain", "Kein Bild verfügbar".toByteArray())
                 } else {
                     sendResponse(output, 200, "image/jpeg", bytes)
+                }
+            } else if (path.startsWith("/sensors")) {
+                val json = sensorProvider()
+                if (json == null) {
+                    sendResponse(output, 404, "text/plain",
+                        "Keine Sensorwerte verfügbar".toByteArray())
+                } else {
+                    sendResponse(output, 200, "application/json; charset=utf-8", json.toByteArray())
                 }
             } else {
                 val html = buildHtml()
@@ -113,7 +132,8 @@ class LocalWebServer private constructor(
         <h1>HomeMoniTor - Versteckter Dienst</h1>
         <p>Onion-Adresse: <b>$addr</b></p>
         <p><a href="/snapshot?cam=back">Hintenkamera</a> |
-           <a href="/snapshot?cam=front">Frontkamera</a></p>
+           <a href="/snapshot?cam=front">Frontkamera</a> |
+           <a href="/sensors">Sensoren (JSON)</a></p>
         <img src="/snapshot?cam=back" alt="Kamera">
         </body></html>
         """.trimIndent()
@@ -124,6 +144,7 @@ class LocalWebServer private constructor(
         val statusLine = when (status) {
             200 -> "HTTP/1.1 200 OK"
             404 -> "HTTP/1.1 404 Not Found"
+            405 -> "HTTP/1.1 405 Method Not Allowed"
             else -> "HTTP/1.1 $status"
         }
         val header = "$statusLine\r\n" +
