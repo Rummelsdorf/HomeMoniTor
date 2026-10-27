@@ -2,9 +2,6 @@ package com.example.homemonitor
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.ImageDecoder
-import android.os.Build
 import android.util.Log
 import android.widget.Toast
 import androidx.camera.core.CameraSelector
@@ -15,7 +12,6 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import java.io.ByteArrayOutputStream
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -31,6 +27,7 @@ class CameraManager private constructor(
     private val cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private var imageCapture: ImageCapture? = null
     private var cameraProvider: ProcessCameraProvider? = null
+    private var owner: androidx.lifecycle.LifecycleOwner? = null
 
     // Aktuell gewählte Linse: 0 = hinten (Standard), 1 = vorne
     var lensFacing: Int = CameraSelector.LENS_FACING_BACK
@@ -54,14 +51,15 @@ class CameraManager private constructor(
 
     // Kamera-Provider finden und an das Lifecycle der Activity binden
     fun bindToLifecycle(lifecycleOwner: androidx.lifecycle.LifecycleOwner) {
+        owner = lifecycleOwner
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
         cameraProviderFuture.addListener({
             cameraProvider = cameraProviderFuture.get()
-            bindPreview()
+            bindPreview(lifecycleOwner)
         }, ContextCompat.getMainExecutor(context))
     }
 
-    private fun bindPreview() {
+    private fun bindPreview(lifecycleOwner: androidx.lifecycle.LifecycleOwner) {
         val preview = Preview.Builder().build()
         preview.setSurfaceProvider(previewView.surfaceProvider)
 
@@ -76,7 +74,7 @@ class CameraManager private constructor(
         cameraProvider?.unbindAll()
         try {
             cameraProvider?.bindToLifecycle(
-                lifecycleOwner as androidx.lifecycle.LifecycleOwner,
+                lifecycleOwner,
                 cameraSelector, preview, imageCapture
             )
         } catch (e: Exception) {
@@ -91,7 +89,8 @@ class CameraManager private constructor(
         } else {
             CameraSelector.LENS_FACING_BACK
         }
-        bindPreview()
+        val lifecycle = owner ?: return
+        bindPreview(lifecycle)
     }
 
     // Foto von der aktuell gewählten Kamera aufnehmen
@@ -115,12 +114,8 @@ class CameraManager private constructor(
 
     private fun imageToBytes(image: ImageProxy): ByteArray? {
         return try {
-            val buffer = image.planes[0].buffer
-            val data = ByteArray(buffer.remaining())
-            buffer.get(data)
-            // YUV -> JPEG Konvertierung über Bitmap (einfach & verlässlich)
-            val bitmap = yuvToBitmap(image, data)
-            if (bitmap == null) return data
+            // YUV -> Bitmap -> JPEG Konvertierung über die CameraX ImageProxy API
+            val bitmap = image.toBitmap()
             val baos = ByteArrayOutputStream()
             bitmap.compress(Bitmap.CompressFormat.JPEG, 85, baos)
             baos.toByteArray()
@@ -128,95 +123,6 @@ class CameraManager private constructor(
             Log.e("CameraManager", "imageToBytes", e)
             null
         }
-    }
-
-    private fun yuvToBitmap(image: ImageProxy, yuv: ByteArray): Bitmap? {
-        return try {
-            val width = image.width
-            val height = image.height
-            val ySize = width * height
-            val uSize = (width + 1) / 2 * ((height + 1) / 2)
-
-            val y = ByteArray(ySize)
-            val u = ByteArray(uSize)
-            val v = ByteArray(uSize)
-
-            var yOff = 0
-            val rowStride = image.planes[0].rowStride
-            val pixelStride = image.planes[0].pixelStride
-            var i = 0
-            while (i < height) {
-                System.arraycopy(yuv, yOff, y, i * width, width)
-                yOff += rowStride
-                i++
-            }
-
-            // U/V Ebenen (vereinfacht: plane 1 & 2)
-            val uvRowStride = image.planes[1].rowStride
-            val uvPixelStride = image.planes[1].pixelStride
-            var ui = 0
-            var uIdx = 0
-            while (ui < (height + 1) / 2) {
-                var vi = 0
-                var vIdx = ui * uvRowStride
-                while (vi < ((width + 1) / 2) * uvPixelStride step uvPixelStride) {
-                    u[uIdx] = yuv[vIdx]
-                    v[uIdx] = yuv[vIdx + 1]
-                    vIdx += uvPixelStride * 2
-                    uIdx++
-                }
-                ui++
-            }
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                val header = ImageDecoder.Header(
-                    ImageDecoder.Format.RGBA_8888, width, height)
-                val source = ImageDecoder.createSource(
-                    yuvToRgba(y, u, v, width, height), header)
-                return ImageDecoder.decodeBitmap(source)
-            } else {
-                // Fallback: direktes ARGB Bitmap bauen (nur Y-Kanal als Grau)
-                val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                for (x in 0 until width) {
-                    for (y in 0 until height) {
-                        val gray = y[y * width + x] and 0xFF
-                        bmp.setPixel(x, y, (0xFF shl 24) or (gray shl 16) or (gray shl 8) or gray)
-                    }
-                }
-                return bmp
-            }
-        } catch (e: Exception) {
-            Log.e("CameraManager", "yuvToBitmap", e)
-            null
-        }
-    }
-
-    @Suppress("SameParameterValue")
-    private fun yuvToRgba(y: ByteArray, u: ByteArray, v: ByteArray,
-                          width: Int, height: ByteArray = height.toByteArray()): ByteArray {
-        // Diese Methode wird nicht direkt genutzt; der Fallback oben reicht.
-        val rgba = ByteArray(width * height * 4)
-        var idx = 0
-        for (row in 0 until height.toInt()) {
-            for (col in 0 until width) {
-                val yIdx = row * width + col
-                val yy = (y[yIdx] and 0xFF).toInt()
-                val uIdx = (row / 2) * (width / 2) + (col / 2)
-                val uu = (u[uIdx] and 0xFF).toInt() - 128
-                val vv = (v[uIdx] and 0xFF).toInt() - 128
-                var r = (yy + 1.402 * vv).toInt()
-                var g = (yy - 0.344 * uu - 0.714 * vv).toInt()
-                var b = (yy + 1.772 * uu).toInt()
-                r = r.coerceIn(0, 255)
-                g = g.coerceIn(0, 255)
-                b = b.coerceIn(0, 255)
-                rgba[idx++] = r.toByte()
-                rgba[idx++] = g.toByte()
-                rgba[idx++] = b.toByte()
-                rgba[idx++] = -1
-            }
-        }
-        return rgba
     }
 
     // Bild in die Android-Galerie (MediaStore) speichern
