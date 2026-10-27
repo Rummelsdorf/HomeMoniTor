@@ -2,9 +2,6 @@ package com.example.homemonitor
 
 import android.content.Context
 import android.content.SharedPreferences
-import com.google.zxing.Result
-import com.google.zxing.client.android.result.ParsedResult
-import com.google.zxing.client.android.result.ResultParser
 import java.util.*
 
 /**
