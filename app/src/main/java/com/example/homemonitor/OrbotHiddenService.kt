@@ -33,8 +33,13 @@ class OrbotHiddenService private constructor(private val context: Context) {
     private var serviceId: String? = null
     @Volatile private var running: Boolean = false
 
-    private val prefs: SharedPreferences =
-        context.getSharedPreferences("homemonitor_prefs", Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences = EncryptedSharedPreferences.create(
+        context,
+        "homemonitor_prefs",
+        MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC),
+        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+    )
 
     companion object {
         @Volatile private var instance: OrbotHiddenService? = null
@@ -174,24 +179,6 @@ class OrbotHiddenService private constructor(private val context: Context) {
         while (true) {
             val line = readLine(reader) ?: return
             if (line.startsWith(prefix)) return
-        }
-    }
-
-    private fun getOrCreateOnionKey(): String? {
-        prefs.getString(KEY_ONION_KEY, null)?.let { return it }
-        return try {
-            val keyGen = KeyPairGenerator.getInstance("RSA")
-            val spec = KeyGenParameterSpec.Builder("homemonitor", 1024).build()
-            keyGen.initialize(spec)
-            val keyPair = keyGen.generateKeyPair()
-            val encoded = android.util.Base64.encodeToString(
-                keyPair.private.encoded,
-                android.util.Base64.DEFAULT
-            )
-            prefs.edit().putString(KEY_ONION_KEY, encoded).apply()
-            encoded
-        } catch (e: Exception) {
-            null
         }
     }
 

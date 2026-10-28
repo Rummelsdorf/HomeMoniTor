@@ -184,7 +184,7 @@ class LocalWebServer private constructor(
     }
 
     private fun fetchRemoteSnapshot(onion: String, cam: String, client: OkHttpClient): ByteArray? {
-        val url = "http://$onion/snapshot?cam=$cam"
+        val url = "http://$onion/snapshot?cam=${java.net.URLEncoder.encode(cam, "UTF-8")}"
         val request = Request.Builder()
             .url(url)
             .header("Accept", "image/jpeg")
