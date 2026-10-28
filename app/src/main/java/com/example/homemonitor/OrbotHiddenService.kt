@@ -2,8 +2,8 @@ package com.example.homemonitor
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
+import android.security.keystore.EncryptedSharedPreferences
+import android.security.keystore.MasterKeys
 import android.util.Log
 import java.io.*
 import java.net.Socket
@@ -24,6 +24,8 @@ import kotlin.concurrent.thread
  * die Onion-Adresse leer. In diesem Fall muss der Nutzer in Orbot manuell unter
  * „Einstellungen -> Versteckte Dienste“ einen Dienst einrichten:
  *   Virtueller Port: 8080  ->  127.0.0.1:8080
+ *   Ziel-IP: 127.0.0.1
+ * Starte Orbot neu. Die App verwendet nun diesen Tunnel.
  */
 class OrbotHiddenService private constructor(private val context: Context) {
 
@@ -45,6 +47,7 @@ class OrbotHiddenService private constructor(private val context: Context) {
                 instance ?: OrbotHiddenService(context.applicationContext).also { instance = it }
             }
         }
+
         fun get(): OrbotHiddenService? = instance
     }
 
@@ -80,17 +83,21 @@ class OrbotHiddenService private constructor(private val context: Context) {
                 Log.w("OrbotHiddenService", "DELONION fehlgeschlagen", e)
             }
         }
+        address = null
+        serviceId = null
     }
 
     private fun getOrCreateOnionKey(): String? {
         prefs.getString(KEY_ONION_KEY, null)?.let { return it }
         return try {
-            val keyGen = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_RSA)
+            val keyGen = KeyPairGenerator.getInstance("RSA")
             val spec = KeyGenParameterSpec.Builder("homemonitor", 1024).build()
             keyGen.initialize(spec)
             val keyPair = keyGen.generateKeyPair()
             val encoded = android.util.Base64.encodeToString(
-                keyPair.private.encoded, android.util.Base64.DEFAULT)
+                keyPair.private.encoded,
+                android.util.Base64.DEFAULT
+            )
             prefs.edit().putString(KEY_ONION_KEY, encoded).apply()
             encoded
         } catch (e: Exception) {
@@ -156,6 +163,35 @@ class OrbotHiddenService private constructor(private val context: Context) {
             return null
         } finally {
             try { socket.close() } catch (e: Exception) { }
+        }
+    }
+
+    private fun readLine(reader: BufferedReader): String? {
+        return try { reader.readLine() } catch (e: Exception) { null }
+    }
+
+    private fun readUntil(reader: BufferedReader, prefix: String) {
+        while (true) {
+            val line = readLine(reader) ?: return
+            if (line.startsWith(prefix)) return
+        }
+    }
+
+    private fun getOrCreateOnionKey(): String? {
+        prefs.getString(KEY_ONION_KEY, null)?.let { return it }
+        return try {
+            val keyGen = KeyPairGenerator.getInstance("RSA")
+            val spec = KeyGenParameterSpec.Builder("homemonitor", 1024).build()
+            keyGen.initialize(spec)
+            val keyPair = keyGen.generateKeyPair()
+            val encoded = android.util.Base64.encodeToString(
+                keyPair.private.encoded,
+                android.util.Base64.DEFAULT
+            )
+            prefs.edit().putString(KEY_ONION_KEY, encoded).apply()
+            encoded
+        } catch (e: Exception) {
+            null
         }
     }
 

@@ -10,6 +10,7 @@ import android.hardware.SensorManager as AndroidSensorManager
 import android.os.BatteryManager
 import android.os.Build
 import android.os.SystemClock
+import com.squareup.moshi.Moshi
 import java.util.Locale
 
 /**
@@ -41,13 +42,21 @@ class SensorManager private constructor(private val context: Context) : SensorEv
     companion object {
         @Volatile private var instance: SensorManager? = null
 
+        private val moshi: Moshi = Moshi.Builder().build()
+        // Adapter für generische Maps (mit gemischten Typen)
+        private val mapAdapter = moshi.adapter<Map<*, *>>(Map::class.java)
+
         fun init(context: Context): SensorManager {
             return instance ?: synchronized(this) {
                 instance ?: SensorManager(context.applicationContext).also { instance = it }
-            }
+            }.also { it.ensureInitialized() }
         }
 
         fun get(): SensorManager? = instance
+    }
+
+    private fun ensureInitialized() {
+        // nothing
     }
 
     /** Registriert Listener für alle verfügbaren Sensoren. */
@@ -75,7 +84,7 @@ class SensorManager private constructor(private val context: Context) : SensorEv
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
-        if (event == null) return
+        event ?: return
         val values = event.values.toList()
         synchronized(lock) {
             when (event.sensor.type) {
@@ -86,7 +95,7 @@ class SensorManager private constructor(private val context: Context) : SensorEv
                 Sensor.TYPE_PROXIMITY ->
                     latest["proximity_cm"] = values[0]
                 Sensor.TYPE_MAGNETIC_FIELD ->
-                    latest["magnetic_uT"] = listOf(values[0], values[1], values[2])
+                    latest["magnetic_µT"] = listOf(values[0], values[1], values[2])
                 Sensor.TYPE_GYROSCOPE ->
                     latest["gyroscope_rad_s"] = listOf(values[0], values[1], values[2])
                 Sensor.TYPE_PRESSURE ->
@@ -147,50 +156,7 @@ class SensorManager private constructor(private val context: Context) : SensorEv
                 put("timestamp", System.currentTimeMillis())
             }
         } ?: return null
-        return toJson(data)
+        // Mit Moshi serialisieren (ersetzt den manuellen Serializer)
+        return mapAdapter.toJson(data)
     }
-
-    // --- Minimaler JSON-Serializer (keine externe Bibliothek nötig) ---
-
-    private fun toJson(value: Any?): String = buildString { appendJson(value) }
-
-    private fun StringBuilder.appendJson(value: Any?) {
-        when (value) {
-            null -> append("null")
-            is String -> append("\"${escape(value)}\"")
-            is Boolean -> append(if (value) "true" else "false")
-            is Number -> append(value.toString())
-            is Map<*, *> -> {
-                append("{")
-                var first = true
-                for ((k, v) in value) {
-                    if (!first) append(",")
-                    first = false
-                    append("\"${escape(k.toString())}\":")
-                    appendJson(v)
-                }
-                append("}")
-            }
-            is List<*> -> {
-                append("[")
-                var first = true
-                for (v in value) {
-                    if (!first) append(",")
-                    first = false
-                    appendJson(v)
-                }
-                append("]")
-            }
-            is FloatArray -> appendJson(value.toList())
-            is DoubleArray -> appendJson(value.toList())
-            else -> append("\"${escape(value.toString())}\"")
-        }
-    }
-
-    private fun escape(s: String): String = s
-        .replace("\\", "\\\\")
-        .replace("\"", "\\\"")
-        .replace("\n", "\\n")
-        .replace("\r", "\\r")
-        .replace("\t", "\\t")
 }

@@ -2,6 +2,8 @@ package com.example.homemonitor
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.security.keystore.EncryptedSharedPreferences
+import android.security.keystore.MasterKeys
 import java.util.*
 
 /**
@@ -14,13 +16,24 @@ class OnionStore(private val prefs: SharedPreferences) {
         private const val KEY_ONIONS = "onions_v1"
 
         @Volatile private var instance: OnionStore? = null
+
         fun init(context: Context): OnionStore {
             return instance ?: synchronized(this) {
-                instance ?: OnionStore(context.getSharedPreferences("homemonitor_prefs", Context.MODE_PRIVATE))
-                    .also { instance = it }
+                instance ?: OnionStore(createEncryptedPrefs(context)).also { instance = it }
             }
         }
+
         fun get(): OnionStore? = instance
+
+        private fun createEncryptedPrefs(context: Context): SharedPreferences {
+            return EncryptedSharedPreferences.create(
+                context,
+                "homemonitor_onion_store",
+                MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC),
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        }
     }
 
     val addresses: List<String>
@@ -58,7 +71,7 @@ class OnionStore(private val prefs: SharedPreferences) {
     }
 
     /**
-     * ZXing parsen und ggf. die Onion-Adresse extrahieren (manche QR-Codes enthalten
+     * ZXing parst und ggf. die Onion-Adresse extrahieren (manche QR-Codes enthalten
      * eine http(s)-URL mit .onion-Host).
      */
     fun extractOnion(raw: String): String? {
