@@ -187,6 +187,36 @@
                         android:textColor="?attr/colorOnSecondary"
                         android:layout_marginTop="8dp" />
                 </LinearLayout>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/sensors_title"
+                    android:textStyle="bold"
+                    android:textSize="16sp"
+                    android:layout_marginTop="16dp"
+                    android:layout_marginBottom="6dp" />
+
+                <Button
+                    android:id="@+id/btnReadSensors"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/btn_read_sensors" />
+
+                <ScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="160dp"
+                    android:layout_marginTop="8dp">
+
+                    <TextView
+                        android:id="@+id/tvSensors"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/sensors_empty"
+                        android:textSize="12sp"
+                        android:typeface="monospace"
+                        android:textColor="?attr/colorOnSurface" />
+                </ScrollView>
             </LinearLayout>
 
             <!-- ============ BETRACHTER ============ -->

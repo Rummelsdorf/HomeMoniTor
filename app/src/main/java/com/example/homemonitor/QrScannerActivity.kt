@@ -48,12 +48,11 @@ class QrScannerActivity : AppCompatActivity() {
         preview.setSurfaceProvider(binding.scannerPreview.surfaceProvider)
 
         val imageAnalysis = ImageAnalysis.Builder()
-            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_LATEST)
-            .setExecutor(cameraExecutor)
-            .setAnalyzer(cameraExecutor, ImageAnalysis.Analyzer { imageProxy: ImageProxy, imageAnalysis: ImageAnalysis ->
-                handleFrame(imageProxy)
-            })
+            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .build()
+        imageAnalysis.setAnalyzer(cameraExecutor, ImageAnalysis.Analyzer { imageProxy: ImageProxy ->
+            handleFrame(imageProxy)
+        })
 
         cameraProvider.bindToLifecycle(
             this,
@@ -66,7 +65,11 @@ class QrScannerActivity : AppCompatActivity() {
     private fun handleFrame(imageProxy: ImageProxy) {
         try {
             val bitmap = imageProxy.toBitmap()
-            val source = RGBLuminanceSource(bitmap)
+            val width = bitmap.width
+            val height = bitmap.height
+            val pixels = IntArray(width * height)
+            bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+            val source = RGBLuminanceSource(width, height, pixels)
             val binaryBitmap = BinaryBitmap(HybridBinarizer(source))
             val result: Result? = barcodeReader.decode(binaryBitmap)
             if (result != null) {

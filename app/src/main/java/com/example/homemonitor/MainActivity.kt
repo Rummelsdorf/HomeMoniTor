@@ -184,7 +184,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private inner class GalleryAdapter : BaseAdapter<Bitmap> {
+    private inner class GalleryAdapter : BaseAdapter() {
         private val items = mutableListOf<Bitmap>()
 
         fun submit(list: List<Bitmap>) {
@@ -200,7 +200,7 @@ class MainActivity : AppCompatActivity() {
         override fun getItemId(position: Int): Long = position.toLong()
 
         override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
-            val imageView = LayoutInflater.from(parent?.context ?: contentContext)
+            val imageView = LayoutInflater.from(parent?.context ?: this@MainActivity)
                 .inflate(R.layout.item_gallery, parent, false) as ImageView
             imageView.setImageBitmap(items[position])
             return imageView

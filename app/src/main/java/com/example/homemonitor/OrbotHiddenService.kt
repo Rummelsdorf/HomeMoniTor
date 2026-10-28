@@ -2,11 +2,12 @@ package com.example.homemonitor
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.security.KeyGenParameterSpec
-import android.security.KeyProperties
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
 import android.util.Log
 import java.io.*
 import java.net.Socket
+import java.security.KeyPairGenerator
 import kotlin.concurrent.thread
 
 /**
@@ -24,9 +25,7 @@ import kotlin.concurrent.thread
  * „Einstellungen -> Versteckte Dienste“ einen Dienst einrichten:
  *   Virtueller Port: 8080  ->  127.0.0.1:8080
  */
-class OrbotHiddenService private constructor(context: Context) {
-
-    private val context: Context
+class OrbotHiddenService private constructor(private val context: Context) {
 
     @Volatile var address: String? = null
     private var serviceId: String? = null
@@ -69,12 +68,12 @@ class OrbotHiddenService private constructor(context: Context) {
                 socket.connect(java.net.InetSocketAddress("127.0.0.1", 9051), 3000)
                 socket.soTimeout = 5000
                 val out = BufferedWriter(OutputStreamWriter(socket.outputStream, "UTF-8"))
-                val in = BufferedReader(InputStreamReader(socket.inputStream, "UTF-8"))
-                readUntil(in, "250")
+                val reader = BufferedReader(InputStreamReader(socket.inputStream, "UTF-8"))
+                readUntil(reader, "250")
                 out.write("DELONION $currentServiceId")
                 out.write("\r\n")
                 out.flush()
-                val resp = readLine(in)
+                val resp = readLine(reader)
                 Log.d("OrbotHiddenService", "DELONION Antwort: $resp")
                 socket.close()
             } catch (e: Exception) {
@@ -86,12 +85,12 @@ class OrbotHiddenService private constructor(context: Context) {
     private fun getOrCreateOnionKey(): String? {
         prefs.getString(KEY_ONION_KEY, null)?.let { return it }
         return try {
-            val keyGen = KeyPairGenerator.getInstance("RSA")
-            val spec = KeyGenParameterSpec.Builder("homemonitor", 1024, KeyProperties.TYPE_RSA).build()
+            val keyGen = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_RSA)
+            val spec = KeyGenParameterSpec.Builder("homemonitor", 1024).build()
             keyGen.initialize(spec)
             val keyPair = keyGen.generateKeyPair()
             val encoded = android.util.Base64.encodeToString(
-                keyPair.privateKey.encoded, android.util.Base64.DEFAULT)
+                keyPair.private.encoded, android.util.Base64.DEFAULT)
             prefs.edit().putString(KEY_ONION_KEY, encoded).apply()
             encoded
         } catch (e: Exception) {
@@ -115,15 +114,15 @@ class OrbotHiddenService private constructor(context: Context) {
             socket.connect(java.net.InetSocketAddress("127.0.0.1", 9051), 3000)
             socket.soTimeout = 5000
             val out = BufferedWriter(OutputStreamWriter(socket.outputStream, "UTF-8"))
-            val in = BufferedReader(InputStreamReader(socket.inputStream, "UTF-8"))
+            val reader = BufferedReader(InputStreamReader(socket.inputStream, "UTF-8"))
 
             // Willkommenszeile(n) lesen
-            readUntil(in, "250")
+            readUntil(reader, "250")
 
             // AUTHENTICATE ohne Passwort versuchen
             out.write("AUTHENTICATE \"\"\r\n")
             out.flush()
-            val authResp = readLine(in)
+            val authResp = readLine(reader)
             Log.d("OrbotHiddenService", "AUTH: $authResp")
 
             // ADD_ONION: Hidden Service, Port 8080 -> localhost:8080
@@ -134,7 +133,7 @@ class OrbotHiddenService private constructor(context: Context) {
             var onion: String? = null
             var done = false
             while (!done) {
-                val line = readLine(in) ?: break
+                val line = readLine(reader) ?: break
                 Log.d("OrbotHiddenService", "CTRL: $line")
                 if (line.startsWith("250-service-id=")) {
                     serviceId = line.substringAfter("250-service-id=").trim()
@@ -160,13 +159,13 @@ class OrbotHiddenService private constructor(context: Context) {
         }
     }
 
-    private fun readLine(in: BufferedReader): String? {
-        return try { in.readLine() } catch (e: Exception) { null }
+    private fun readLine(reader: BufferedReader): String? {
+        return try { reader.readLine() } catch (e: Exception) { null }
     }
 
-    private fun readUntil(in: BufferedReader, prefix: String) {
-        var line: String?
-        while ({ line = readLine(in); line != null }()) {
+    private fun readUntil(reader: BufferedReader, prefix: String) {
+        while (true) {
+            val line = readLine(reader) ?: return
             if (line.startsWith(prefix)) return
         }
     }

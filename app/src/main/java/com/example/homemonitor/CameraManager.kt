@@ -6,6 +6,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -104,8 +105,7 @@ class CameraManager private constructor(
                 onImageCaptured(bytes)
             }
 
-            override fun onFailure(exception: ImageCaptureException) {
-                super.onFailure(exception)
+            override fun onError(exception: ImageCaptureException) {
                 Log.e("CameraManager", "Aufnahme fehlgeschlagen", exception)
                 onImageCaptured(null)
             }

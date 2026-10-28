@@ -144,7 +144,7 @@ class SensorManager private constructor(private val context: Context) : SensorEv
                         "uptime_ms" to SystemClock.elapsedRealtime()
                     )
                 )
-                put("timestamp" to System.currentTimeMillis())
+                put("timestamp", System.currentTimeMillis())
             }
         } ?: return null
         return toJson(data)

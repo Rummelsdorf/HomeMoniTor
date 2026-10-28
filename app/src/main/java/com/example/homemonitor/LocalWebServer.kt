@@ -50,7 +50,7 @@ class LocalWebServer private constructor(
                 serverSocket?.bind(java.net.InetSocketAddress("127.0.0.1", port))
                 Log.i("LocalWebServer", "Server auf 127.0.0.1:$port")
                 while (running) {
-                    val client: Socket? = serverSocket?.accept() ?: break
+                    val client = serverSocket?.accept() ?: break
                     thread(name = "HttpClient", isDaemon = true) {
                         handleClient(client)
                     }
@@ -86,7 +86,7 @@ class LocalWebServer private constructor(
             val query = url.query ?: ""
 
             if (path.startsWith("/snapshot")) {
-                val cam = extractParam(query, "cam").orElse("back")
+                val cam = extractParam(query, "cam") ?: "back"
                 val bytes = snapshotProvider(cam)
                 if (bytes == null) {
                     sendResponse(output, 404, "text/plain", "Kein Bild verfügbar".toByteArray())

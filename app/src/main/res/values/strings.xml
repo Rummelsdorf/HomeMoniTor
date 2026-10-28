@@ -19,6 +19,11 @@
     <string name="status_not_available">Nicht verfügbar (Orbot erforderlich).</string>
     <string name="hint_configure_orbot">Tipp: In Orbot unter „Versteckte Dienste“ Port 8080 → 127.0.0.1:8080 eintragen.</string>
 
+    <!-- Sensoren -->
+    <string name="sensors_title">Lokale Sensoren (außer Kamera)</string>
+    <string name="btn_read_sensors">Sensoren auslesen</string>
+    <string name="sensors_empty">Noch keine Sensorwerte gelesen.</string>
+
     <!-- Viewer -->
     <string name="viewer_title">Kamerabilder aus dem Tor-Netzwerk</string>
     <string name="viewer_hint_onion">.onion-Adresse eingeben</string>

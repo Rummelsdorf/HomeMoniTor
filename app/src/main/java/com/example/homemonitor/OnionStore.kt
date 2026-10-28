@@ -10,9 +10,9 @@ import java.util.*
  */
 class OnionStore(private val prefs: SharedPreferences) {
 
-    private const val KEY_ONIONS = "onions_v1"
-
     companion object {
+        private const val KEY_ONIONS = "onions_v1"
+
         @Volatile private var instance: OnionStore? = null
         fun init(context: Context): OnionStore {
             return instance ?: synchronized(this) {
