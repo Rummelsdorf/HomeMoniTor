@@ -2,8 +2,8 @@ package com.example.homemonitor
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.security.keystore.EncryptedSharedPreferences
-import android.security.keystore.MasterKeys
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKeys
 import java.util.*
 
 /**
@@ -27,9 +27,9 @@ class OnionStore(private val prefs: SharedPreferences) {
 
         private fun createEncryptedPrefs(context: Context): SharedPreferences {
             return EncryptedSharedPreferences.create(
+                "homemonitor_prefs",
+                "homemonitor_prefs_master",
                 context,
-                "homemonitor_onion_store",
-                MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC),
                 EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )

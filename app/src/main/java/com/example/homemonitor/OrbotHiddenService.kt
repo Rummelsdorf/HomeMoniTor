@@ -2,11 +2,12 @@ package com.example.homemonitor
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.security.keystore.EncryptedSharedPreferences
-import android.security.keystore.MasterKeys
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKeys
 import android.util.Log
 import java.io.*
 import java.net.Socket
+import android.security.keystore.KeyGenParameterSpec
 import java.security.KeyPairGenerator
 import kotlin.concurrent.thread
 
@@ -34,9 +35,9 @@ class OrbotHiddenService private constructor(private val context: Context) {
     @Volatile private var running: Boolean = false
 
     private val prefs: SharedPreferences = EncryptedSharedPreferences.create(
-        context,
         "homemonitor_prefs",
-        MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC),
+        "homemonitor_prefs_master",
+        context,
         EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
     )
@@ -168,17 +169,6 @@ class OrbotHiddenService private constructor(private val context: Context) {
             return null
         } finally {
             try { socket.close() } catch (e: Exception) { }
-        }
-    }
-
-    private fun readLine(reader: BufferedReader): String? {
-        return try { reader.readLine() } catch (e: Exception) { null }
-    }
-
-    private fun readUntil(reader: BufferedReader, prefix: String) {
-        while (true) {
-            val line = readLine(reader) ?: return
-            if (line.startsWith(prefix)) return
         }
     }
 

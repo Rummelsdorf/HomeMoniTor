@@ -1,6 +1,5 @@
 plugins {
-    id 'com.android.application' version '9.4.0' apply false
-    id 'kotlin-kapt' // Required for Moshi annotation processing (optional)
+    id 'com.android.application'
 }
 
 android {
@@ -62,7 +61,6 @@ dependencies {
 
     // Moshi for JSON serialization (replaces manual serializer)
     implementation "com.squareup.moshi:moshi:1.15.0"
-    kapt "com.squareup.moshi:moshi-kapt:1.15.0"
 
     // Lifecycle ViewModel
     implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.0"

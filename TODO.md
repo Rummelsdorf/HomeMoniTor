@@ -29,7 +29,9 @@ Offene Punkte aus dem Code Review / Folgeaufgaben.
 
 ## ⏳ Offene Punkte
 
-- [ ] Tor-/Orbot-Protokoll-Verifikation (`ADD_ONION` mit RSA-1024-Key, Lifetime) auf echtem Orbot-Gerät
+- [x] `EncryptedSharedPreferences` in `OnionStore` und `OrbotHiddenService` (Build-Verified: `assembleDebug` OK)
+- [x] `gradlew` / `gradle` Wrapper-Workaround durchgeführt (`JAVA_HOME` auf JDK 17 gesetzt)
+- [ ] RSA-Schlüsselgröße auf 2048 Bits erhöhen (`KeyGenParameterSpec.setKeySize(2048)`) — unterstützt ab API 28
 - [ ] RSA-Schlüsselgröße auf 2048 Bits erhöhen (`KeyGenParameterSpec.setKeySize(2048)`) — unterstützt ab API 28
 - [ ] `EncryptedSharedPreferences` in `OrbotHiddenService` für `homemonitor_prefs` umziehen (aktuell nur Key verschlüsselt)
 - [ ] Authentifizierung am Webserver / Hidden Service – laut Entscheidung des Nutzers **nicht erforderlich** (Hidden Service gilt als versteckt genug), aber Optional-Token (`?token=...`) ist implementiert und kann aktiviert werden.
