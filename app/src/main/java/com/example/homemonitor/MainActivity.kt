@@ -272,10 +272,21 @@ class MainActivity : AppCompatActivity() {
 
     private fun isOrbotAccessible(): Boolean = try {
         val socket = java.net.Socket()
-        socket.connect(java.net.InetSocketAddress("127.0.0.1", 9051), 800)
+        socket.connect(java.net.InetSocketAddress("127.0.0.1", 9051), 3000)
+        socket.soTimeout = 3000
+        val out = java.io.BufferedWriter(java.io.OutputStreamWriter(socket.outputStream, "UTF-8"))
+        val reader = java.io.BufferedReader(java.io.InputStreamReader(socket.inputStream, "UTF-8"))
+        // Willkommenszeile lesen
+        var line: String?
+        do { line = reader.readLine() } while (line != null && !line!!.startsWith("250"))
+        // AUTHENTICATE ohne Passwort versuchen (Standard für Orbot)
+        out.write("AUTHENTICATE \"\"\r\n")
+        out.flush()
+        val authResp = reader.readLine()
         socket.close()
-        true
+        authResp != null && (authResp.contains("250") || authResp.contains("OK"))
     } catch (e: Exception) {
+        android.util.Log.w("OrbotCheck", "Orbot nicht erreichbar", e)
         false
     }
 
