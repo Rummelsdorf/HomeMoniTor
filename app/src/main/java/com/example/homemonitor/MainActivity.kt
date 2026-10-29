@@ -11,38 +11,72 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
 import android.view.View
+import android.widget.Button
+import android.widget.ImageView
+import android.widget.ListView
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.asLiveData
-import androidx.lifecycle.lifecycleScope
 import com.example.homemonitor.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.net.InetSocketAddress
 import java.net.Proxy
-import java.util.Locale
 
 /**
- * Haupttätigkeit der App.
+ * Haupttätigkeit der App mit zwei Zuständen:
+ * 1. Kamera mit QR-Scanner (Versteckter Dienst / Onion)
+ * 2. Gallery mit verknüpften Live-Feed-Adressen
  *
- * Zeigt die Kamera (verlinkt über einen Hidden Service / Onion-Adresse) sowie
- * eine Galerie mit Fotos, die über QR-Codes mit Onion-Adressen verknüpft wurden.
+ * Der Übergang zwischen den Zuständen erfolgt über Buttons.
+ * Ein "Quit"-Button ist immer sichtbar.
  */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
+
+    // UI-Elemente
+    private lateinit var btnStateCamera: Button
+    private lateinit var btnStateGallery: Button
+    private lateinit var panelCamera: View
+    private lateinit var panelGallery: View
+    private lateinit var btnQuit: Button
+
+    // Camera-Zustand UI (inside panelCamera)
+    private lateinit var cameraPreview: androidx.camera.view.PreviewView
+    private lateinit var tvStatus: TextView
+    private lateinit var btnStartService: Button
+    private lateinit var btnStopService: Button
+    private lateinit var btnFlipCamera: Button
+    private lateinit var btnSnapshot: Button
+    private lateinit var tvOnionAddress: TextView
+    private lateinit var btnShowQr: Button
+    private lateinit var btnHideQr: Button
+    private lateinit var ivQr: ImageView
+    private lateinit var btnReadSensors: Button
+    private lateinit var tvSensors: TextView
+
+    // Gallery-Zustand UI (inside panelGallery)
+    private lateinit var btnCameraMode: Button
+    private lateinit var tvGalleryStatus: TextView
+    private lateinit var lvGalleryFeeds: ListView
+
+    // Dienste & Komponenten
     private lateinit var cameraManager: CameraManager
     private lateinit var sensorManager: SensorManager
     private lateinit var localWebServer: LocalWebServer
     private lateinit var onionStore: OnionStore
     private lateinit var okHttpClient: OkHttpClient
-    private lateinit var mainViewModel: MainViewModel
+
+    // State
+    private enum class AppState {
+        CAMERA, GALLERY
+    }
+    private var currentState: AppState = AppState.CAMERA
 
     // Thread-sicherer Zugriff auf latestJpeg
     @Volatile private var latestJpeg: ByteArray? = null
@@ -58,18 +92,11 @@ class MainActivity : AppCompatActivity() {
             .proxy(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", 9050)))
             .build()
 
-        // ViewModel für die App-Logik
-        mainViewModel = ViewModelProvider(this)[MainViewModel::class.java]
-        mainViewModel.latestJpeg.asLiveData().observe(this) { bytes ->
-            latestJpeg = bytes
-        }
-
         // Komponenten initialisieren
         onionStore = OnionStore.get() ?: OnionStore.init(this)
-        cameraCallback = { bytes ->
-            mainViewModel.updateLatestJpeg(bytes)
+        cameraManager = CameraManager.get() ?: CameraManager.init(this, binding.cameraPreview) { bytes ->
+            latestJpeg = bytes
         }
-        cameraManager = CameraManager.get() ?: CameraManager.init(this, binding.cameraPreview, cameraCallback)
         cameraManager.bindToLifecycle(this)
         sensorManager = SensorManager.get() ?: SensorManager.init(this)
         sensorManager.start()
@@ -80,9 +107,14 @@ class MainActivity : AppCompatActivity() {
             okHttpClient
         )
 
-        setupTabs()
+        // UI-Initialisierung
+        initUi()
+
+        // Buttons initialisieren und Listener setzen
         setupListeners()
-        loadGallery()
+
+        // Startzustand: Kamera
+        setState(AppState.CAMERA)
 
         // Kamera-Berechtigung anfordern
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
@@ -90,197 +122,126 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private var cameraCallback: (ByteArray?) -> Unit = { bytes -> /* no-op placeholder */ }
+    private fun initUi() {
+        btnStateCamera = findViewById(R.id.btnStateCamera)
+        btnStateGallery = findViewById(R.id.btnStateGallery)
+        panelCamera = findViewById(R.id.panelCamera)
+        panelGallery = findViewById(R.id.panelGallery)
+        btnQuit = findViewById(R.id.btnQuit)
 
-    private fun setupTabs() {
-        binding.btnTabHost.setOnClickListener { showTab(TAB_HOST) }
-        binding.btnTabViewer.setOnClickListener { showTab(TAB_VIEWER) }
-        binding.btnTabScanner.setOnClickListener { startQrScanner() }
-    }
+        // Camera-Zustand
+        cameraPreview = findViewById(R.id.cameraPreview)
+        tvStatus = findViewById(R.id.tvStatus)
+        btnStartService = findViewById(R.id.btnStartService)
+        btnStopService = findViewById(R.id.btnStopService)
+        btnFlipCamera = findViewById(R.id.btnFlipCamera)
+        btnSnapshot = findViewById(R.id.btnSnapshot)
+        tvOnionAddress = findViewById(R.id.tvOnionAddress)
+        btnShowQr = findViewById(R.id.btnShowQr)
+        btnHideQr = findViewById(R.id.btnHideQr)
+        ivQr = findViewById(R.id.ivQr)
+        btnReadSensors = findViewById(R.id.btnReadSensors)
+        tvSensors = findViewById(R.id.tvSensors)
 
-    private fun startQrScanner() {
-        startActivity(Intent(this, QrScannerActivity::class.java))
-    }
-
-    private fun showTab(index: Int) {
-        binding.panelHost.visibility = if (index == TAB_HOST) View.VISIBLE else View.GONE
-        binding.panelViewer.visibility = if (index == TAB_VIEWER) View.VISIBLE else View.GONE
-        binding.panelScanner.visibility = if (index == TAB_SCANNER) View.VISIBLE else View.GONE
-        binding.btnTabHost.isSelected = index == TAB_HOST
-        binding.btnTabViewer.isSelected = index == TAB_VIEWER
-        binding.btnTabScanner.isSelected = index == TAB_SCANNER
+        // Gallery-Zustand
+        btnCameraMode = findViewById(R.id.btnCameraMode)
+        tvGalleryStatus = findViewById(R.id.tvGalleryStatus)
+        lvGalleryFeeds = findViewById(R.id.lvGalleryFeeds)
     }
 
     private fun setupListeners() {
-        binding.btnStartService.setOnClickListener { startLocalService() }
-        binding.btnStopService.setOnClickListener { stopLocalService() }
-        binding.btnFlipCamera.setOnClickListener { cameraManager.flip() }
-        binding.btnSnapshot.setOnClickListener { cameraManager.takeSnapshot() }
-        binding.btnShowQr.setOnClickListener { showOnionQr() }
-        binding.btnHideQr.setOnClickListener { binding.ivQr.visibility = View.GONE }
-        binding.btnReadSensors.setOnClickListener { readSensors() }
-        binding.btnLoad.setOnClickListener { loadSnapshot() }
-        binding.btnSaveGallery.setOnClickListener { saveCurrentSnapshotToGallery() }
+        // Zustands-Wechsel Buttons
+        btnStateCamera.setOnClickListener { setState(AppState.CAMERA) }
+        btnStateGallery.setOnClickListener { setState(AppState.GALLERY) }
+
+        // Quit Button (immer sichtbar)
+        btnQuit.setOnClickListener { finish() }
+
+        // Kamera-Zustand Listener
+        btnStartService.setOnClickListener {
+            localWebServer.start()
+            OrbotHiddenService.get()?.start()
+            tvStatus.text = getString(R.string.status_service_started)
+        }
+        btnStopService.setOnClickListener {
+            localWebServer.stop()
+            OrbotHiddenService.get()?.stop()
+            tvStatus.text = getString(R.string.status_service_stopped)
+        }
+        btnFlipCamera.setOnClickListener { cameraManager.flip() }
+        btnSnapshot.setOnClickListener { cameraManager.takeSnapshot() }
+        btnShowQr.setOnClickListener { showOnionQr() }
+        btnHideQr.setOnClickListener { ivQr.visibility = View.GONE }
+        btnReadSensors.setOnClickListener { readSensors() }
+
+        // Gallery-Zustand Listener
+        btnCameraMode.setOnClickListener { setState(AppState.CAMERA) }
     }
 
-    private fun startLocalService() {
-        localWebServer.start()
-        OrbotHiddenService.get()?.start()
-        binding.tvStatus.text = getString(R.string.status_service_started)
+    private fun setState(newState: AppState) {
+        currentState = newState
+
+        btnStateCamera.isSelected = newState == AppState.CAMERA
+        btnStateGallery.isSelected = newState == AppState.GALLERY
+
+        when (newState) {
+            AppState.CAMERA -> {
+                panelCamera.visibility = View.VISIBLE
+                panelGallery.visibility = View.GONE
+            }
+            AppState.GALLERY -> {
+                panelCamera.visibility = View.GONE
+                panelGallery.visibility = View.VISIBLE
+                loadGalleryFeeds()
+            }
+        }
     }
 
-    private fun stopLocalService() {
-        localWebServer.stop()
-        OrbotHiddenService.get()?.stop()
-        binding.tvStatus.text = getString(R.string.status_service_stopped)
+    private fun loadGalleryFeeds() {
+        val addresses = onionStore.addresses
+        val adapter = android.widget.ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, addresses)
+        lvGalleryFeeds.adapter = adapter
+        tvGalleryStatus.text = if (addresses.isEmpty()) "Keine Feed-Adressen" else "${addresses.size} Feed-Adresse(n)"
     }
 
-    private fun readSensors() {
-        val json = sensorManager.collectJson()
-        binding.tvSensors.text = json ?: getString(R.string.sensors_empty)
-    }
-
+    // "Show connection code" - zeigt QR mit Onion-URL
     private fun showOnionQr() {
         val onion = onionStore.addresses.firstOrNull() ?: run {
-            binding.tvOnionAddress.text = getString(R.string.status_not_available)
+            tvOnionAddress.text = getString(R.string.status_not_available)
             return
         }
-        binding.tvOnionAddress.text = onion
-        binding.ivQr.setImageBitmap(QrGenerator.generate(onion, 512))
-        binding.ivQr.visibility = View.VISIBLE
+        tvOnionAddress.text = onion
+        ivQr.setImageBitmap(QrGenerator.generate(onion, 512))
+        ivQr.visibility = View.VISIBLE
+        Toast.makeText(this, "Onion-Code: $onion", Toast.LENGTH_SHORT).show()
     }
 
     private fun decodeBitmap(bytes: ByteArray): Bitmap? =
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = 2 })
 
-    private fun loadSnapshot() {
-        val onionInput = binding.etOnion.text?.toString()?.trim()
-        val camParam = extractValidCamParam(onionInput)
-
-        // Zuerst lokales Bild zeigen (falls vorhanden)
-        val localBytes = latestJpeg
-        if (localBytes != null) {
-            lifecycleScope.launch {
-                val bmp = withContext(Dispatchers.Default) { decodeBitmap(localBytes) }
-                if (bmp != null) {
-                    binding.ivViewerImage.setImageBitmap(bmp)
-                }
-            }
-        }
-
-        // Falls eine gültige Onion-Adresse eingegeben wurde, remote Bild fetchen
-        if (!onionInput.isNullOrBlank() && onionStore.isOnionAddress(onionInput)) {
-            lifecycleScope.launch {
-                val remoteBytes = fetchRemoteSnapshot(onionInput, camParam)
-                if (remoteBytes != null) {
-                    val bmp = withContext(Dispatchers.Default) { decodeBitmap(remoteBytes) }
-                    if (bmp != null) {
-                        binding.ivViewerImage.setImageBitmap(bmp)
-                        Toast.makeText(this@MainActivity, "Remote Bild geladen", Toast.LENGTH_SHORT).show()
-                    }
-                } else {
-                    Toast.makeText(this@MainActivity, "Kein Remote-Bild verfügbar", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-    }
-
-    private fun extractValidCamParam(input: String?): String {
-        val s = input?.trim()?.lowercase(Locale.US) ?: "back"
-        return when (s) {
-            "front" -> "front"
-            else -> "back"
-        }
-    }
-
-    private suspend fun fetchRemoteSnapshot(onion: String, cam: String): ByteArray? {
-        val url = "http://$onion/snapshot?cam=$cam"
-        return try {
-            withContext(Dispatchers.IO) {
-                val request = Request.Builder()
-                    .url(url)
-                    .header("Accept", "image/jpeg")
-                    .build()
-                okHttpClient.newCall(request).execute().use { response ->
-                    if (response.isSuccessful) response.body?.bytes() else null
-                }
-            }
-        } catch (e: Exception) {
-            Log.w("MainActivity", "Failed to fetch remote snapshot from $onion", e)
-            null
-        }
+    private fun readSensors() {
+        val json = sensorManager.collectJson()
+        tvSensors.text = json ?: getString(R.string.sensors_empty)
     }
 
     private fun saveCurrentSnapshotToGallery() {
         val bytes = latestJpeg ?: return
         val bmp = decodeBitmap(bytes)
-        val onion = binding.etOnion.text?.toString()?.trim()
+        val onion = tvOnionAddress.text.toString().trim().takeIf { it.isNotEmpty() } ?: "camera"
         if (bmp != null) {
-            val filename = if (onion != null) "$onion" else "camera"
-            if (cameraManager.saveToGallery(bmp, filename)) {
+            if (cameraManager.saveToGallery(bmp, onion)) {
                 Toast.makeText(this, "In Galerie gespeichert", Toast.LENGTH_SHORT).show()
-                loadGallery()
+                loadGalleryFeeds()
             } else {
                 Toast.makeText(this, "Speichern fehlgeschlagen", Toast.LENGTH_SHORT).show()
             }
         }
     }
 
-    private fun loadGallery() {
-        val projection = arrayOf(
-            MediaStore.Images.Media._ID,
-            MediaStore.Images.Media.RELATIVE_PATH,
-            MediaStore.Images.Media.DISPLAY_NAME
-        )
-        contentResolver.query(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            projection,
-            "${MediaStore.Images.Media.RELATIVE_PATH} = ?",
-            arrayOf(Environment.DIRECTORY_PICTURES + "/HomeMoniTor"),
-            "${MediaStore.Images.Media.DATE_ADDED} DESC"
-        )?.use { cursor ->
-            val bitmaps = mutableListOf<Bitmap>()
-            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-            val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
-            while (cursor.moveToNext()) {
-                val id = cursor.getLong(idColumn)
-                val name = cursor.getString(nameColumn) ?: continue
-                val uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
-                val bmp = contentResolver.openInputStream(uri)?.use { input ->
-                    input.readBytes().let { decodeBitmapOptimizedForGallery(it) }
-                }
-                if (bmp != null) {
-                    bitmaps.add(bmp)
-                }
-            }
-            val adapter = GalleryAdapter(this)
-            adapter.submit(bitmaps)
-            binding.lvGallery.adapter = adapter
-            binding.tvGalleryEmpty.visibility = if (bitmaps.isEmpty()) View.VISIBLE else View.GONE
-        }
-    }
-
-    private fun decodeBitmapOptimizedForGallery(bytes: ByteArray): Bitmap? {
-        val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
-        var inSampleSize = 1
-        if (opts.outWidth > 512 || opts.outHeight > 512) {
-            val halfWidth = opts.outWidth / 2
-            val halfHeight = opts.outHeight / 2
-            while (halfWidth / inSampleSize >= 512 && halfHeight / inSampleSize >= 512) {
-                inSampleSize *= 2
-            }
-        }
-        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply {
-            inSampleSize = inSampleSize
-            inPreferredConfig = Bitmap.Config.RGB_565
-        })
-    }
-
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_CAMERA) {
-            // Berechtigungsergebnis auswerten (z. B. Kamera später initialisieren)
+            // Berechtigungsergebnis auswerten
         }
     }
 
@@ -294,8 +255,5 @@ class MainActivity : AppCompatActivity() {
     private companion object {
         const val LOCAL_PORT = 8080
         const val REQUEST_CAMERA = 1001
-        const val TAB_HOST = 0
-        const val TAB_VIEWER = 1
-        const val TAB_SCANNER = 2
     }
 }
