@@ -33,6 +33,14 @@ import java.net.Proxy
  */
 class MainActivity : AppCompatActivity() {
 
+    // Globaler Crash-Handler: jede Exception sichtbar machen
+    init {
+        Thread.setDefaultUncaughtExceptionHandler { _, e ->
+            android.util.Log.e("HomeMoniTorCrash", "FATAL: App stürzt ab", e)
+            e.printStackTrace()
+        }
+    }
+
     private lateinit var binding: ActivityMainBinding
 
     // UI-Elemente
@@ -85,15 +93,20 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
         setSupportActionBar(binding.toolbar)
 
-        // Orbot-Check: erst nachdem das Fenster existiert
-        if (!isOrbotAccessible()) {
-            AlertDialog.Builder(this)
-                .setTitle("Orbot nicht erreichbar")
-                .setMessage("Orbot (Tor) läuft nicht oder ist nicht über 127.0.0.1:9051 erreichbar. Bitte Orbot starten und bestätigen. Die App wird danach beendet.")
-                .setPositiveButton("Bestätigt / Beenden") { _, _ -> finish() }
-                .setCancelable(false)
-                .show()
-        }
+        // Orbot-Check im Hintergrund (blockiert nicht UI)
+        Thread {
+            val reachable = isOrbotAccessible()
+            runOnUiThread {
+                if (!reachable) {
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("Orbot nicht erreichbar")
+                        .setMessage("Orbot (Tor) läuft nicht oder 127.0.0.1:9051 nicht erreichbar. Bestätigen beendet die App.")
+                        .setPositiveButton("Bestätigt / Beenden") { _, _ -> finish() }
+                        .setCancelable(false)
+                        .show()
+                }
+            }
+        }.start()
 
         // OkHttp-Client für Remote-Fetch über Tor SOCKS-Proxy (Orbot)
         okHttpClient = OkHttpClient.Builder()
