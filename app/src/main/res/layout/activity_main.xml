@@ -272,4 +272,14 @@
             android:visibility="gone" />
     </LinearLayout>
 
+    <!-- App-Version / Build-Info -->
+    <TextView
+        android:id="@+id/tvVersion"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="8dp"
+        android:textSize="10sp"
+        android:textColor="?attr/colorOnSecondary"
+        android:gravity="center" />
+
 </LinearLayout>

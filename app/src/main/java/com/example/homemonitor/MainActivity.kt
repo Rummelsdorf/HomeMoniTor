@@ -159,6 +159,12 @@ class MainActivity : AppCompatActivity() {
         btnCameraMode = findViewById(R.id.btnCameraMode)
         tvGalleryStatus = findViewById(R.id.tvGalleryStatus)
         lvGalleryFeeds = findViewById(R.id.lvGalleryFeeds)
+
+        // Versions-Info (sichtbar für Unterscheidung)
+        val versionText = findViewById<TextView>(R.id.tvVersion)
+        val pInfo = packageManager.getPackageInfo(packageName, 0)
+        val code = try { pInfo.longVersionCode.toString() } catch (e: Exception) { pInfo.versionCode.toString() }
+        versionText.text = "HM v${pInfo.versionName} (code $code) — build 2026-10-29"
     }
 
     private fun setupListeners() {
