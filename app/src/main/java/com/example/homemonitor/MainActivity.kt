@@ -81,7 +81,11 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Orbot-Check: muss vorne stehen und bestätigt werden
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+        setSupportActionBar(binding.toolbar)
+
+        // Orbot-Check: erst nachdem das Fenster existiert
         if (!isOrbotAccessible()) {
             AlertDialog.Builder(this)
                 .setTitle("Orbot nicht erreichbar")
@@ -90,10 +94,6 @@ class MainActivity : AppCompatActivity() {
                 .setCancelable(false)
                 .show()
         }
-
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-        setSupportActionBar(binding.toolbar)
 
         // OkHttp-Client für Remote-Fetch über Tor SOCKS-Proxy (Orbot)
         okHttpClient = OkHttpClient.Builder()
@@ -227,14 +227,19 @@ class MainActivity : AppCompatActivity() {
 
     // "Show connection code" - zeigt QR mit Onion-URL
     private fun showOnionQr() {
-        val onion = onionStore.addresses.firstOrNull() ?: run {
-            tvOnionAddress.text = getString(R.string.status_not_available)
-            return
+        try {
+            val onion = onionStore.addresses.firstOrNull() ?: run {
+                tvOnionAddress.text = getString(R.string.status_not_available)
+                return
+            }
+            tvOnionAddress.text = onion
+            ivQr.setImageBitmap(QrGenerator.generate(onion, 512))
+            ivQr.visibility = View.VISIBLE
+            Toast.makeText(this, "Onion-Code: $onion", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "QR-Generierung fehlgeschlagen", e)
+            Toast.makeText(this, "QR-Code konnte nicht erzeugt werden", Toast.LENGTH_LONG).show()
         }
-        tvOnionAddress.text = onion
-        ivQr.setImageBitmap(QrGenerator.generate(onion, 512))
-        ivQr.visibility = View.VISIBLE
-        Toast.makeText(this, "Onion-Code: $onion", Toast.LENGTH_SHORT).show()
     }
 
     private fun decodeBitmap(bytes: ByteArray): Bitmap? =
