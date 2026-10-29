@@ -3,6 +3,7 @@ package com.example.homemonitor
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.app.AlertDialog
 import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.util.Log
@@ -79,6 +80,17 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Orbot-Check: muss vorne stehen und bestätigt werden
+        if (!isOrbotAccessible()) {
+            AlertDialog.Builder(this)
+                .setTitle("Orbot nicht erreichbar")
+                .setMessage("Orbot (Tor) läuft nicht oder ist nicht über 127.0.0.1:9051 erreichbar. Bitte Orbot starten und bestätigen.")
+                .setPositiveButton("Erkannt / Weiter") { _, _ -> }
+                .setCancelable(false)
+                .show()
+        }
+
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         setSupportActionBar(binding.toolbar)
@@ -256,6 +268,15 @@ class MainActivity : AppCompatActivity() {
         sensorManager.stop()
         cameraManager.shutdown()
         try { okHttpClient.dispatcher.executorService.shutdown() } catch (e: Exception) { }
+    }
+
+    private fun isOrbotAccessible(): Boolean = try {
+        val socket = java.net.Socket()
+        socket.connect(java.net.InetSocketAddress("127.0.0.1", 9051), 800)
+        socket.close()
+        true
+    } catch (e: Exception) {
+        false
     }
 
     private companion object {
