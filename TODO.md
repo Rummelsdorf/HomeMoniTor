@@ -41,3 +41,13 @@ Offene Punkte aus dem Code Review / Folgeaufgaben.
 - [ ] Authentifizierung am Webserver / Hidden Service – laut Entscheidung des Nutzers **nicht erforderlich** (Hidden Service gilt als versteckt genug).
 - [x] Verschlüsselte Schlüssel-/Adressspeicherung (`EncryptedSharedPreferences`).
 - [ ] Zusätzliche Auth-Option (statisches Token) ist implementiert, aber standardmäßig deaktiviert (`authToken = null`).
+
+--- Weitere Fehlerquellen (Code-Review 30.10.) ---
+
+- [ ] `QrScannerActivity`: `CAMERA`-Permission nicht explizit angefordert → Crash auf echtem Gerät möglich
+- [ ] `CameraManager.bindToLifecycle()`: `IllegalArgumentException` wenn CameraX Provider fehlt (Emulator ohne Hardware)
+- [ ] `GalleryAdapter`: `OutOfMemoryError` bei großen Bitmaps nicht abgefangen
+- [ ] `MainActivity`: `latestJpeg` Race Condition (Webserver-Thread + UI-Thread)
+- [ ] `isOrbotAccessible()`: Hintergrund-Thread, aber `finish()` sofort → Dialog könnte nicht sichtbar sein
+- [ ] `BuildConfig.BUILD_DATE`: Gradle-Cache kann altes Datum liefern
+- [ ] `OrbotHiddenService.tryControlPort()`: `ADD_ONION`-Syntax variantenabhängig
