@@ -26,13 +26,18 @@ class OnionStore(private val prefs: SharedPreferences) {
         fun get(): OnionStore? = instance
 
         private fun createEncryptedPrefs(context: Context): SharedPreferences {
-            return EncryptedSharedPreferences.create(
-                "homemonitor_prefs",
-                "homemonitor_prefs_master",
-                context,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
+            return try {
+                EncryptedSharedPreferences.create(
+                    "homemonitor_prefs",
+                    "homemonitor_prefs_master",
+                    context,
+                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+                )
+            } catch (e: Exception) {
+                android.util.Log.w("OnionStore", "EncryptedSharedPreferences failed, using fallback", e)
+                context.getSharedPreferences("homemonitor_fallback", Context.MODE_PRIVATE)
+            }
         }
     }
 

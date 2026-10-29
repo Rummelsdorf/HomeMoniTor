@@ -34,13 +34,18 @@ class OrbotHiddenService private constructor(private val context: Context) {
     private var serviceId: String? = null
     @Volatile private var running: Boolean = false
 
-    private val prefs: SharedPreferences = EncryptedSharedPreferences.create(
-        "homemonitor_prefs",
-        "homemonitor_prefs_master",
-        context,
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-    )
+    private val prefs: SharedPreferences = try {
+        EncryptedSharedPreferences.create(
+            "homemonitor_prefs",
+            "homemonitor_prefs_master",
+            context,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    } catch (e: Exception) {
+        android.util.Log.w("OrbotHiddenService", "EncryptedSharedPreferences failed, using fallback", e)
+        context.getSharedPreferences("homemonitor_fallback", Context.MODE_PRIVATE)
+    }
 
     companion object {
         @Volatile private var instance: OrbotHiddenService? = null

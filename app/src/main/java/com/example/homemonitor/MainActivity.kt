@@ -1,14 +1,10 @@
 package com.example.homemonitor
 
 import android.Manifest
-import android.content.ContentUris
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Bundle
-import android.os.Environment
-import android.provider.MediaStore
 import android.util.Log
 import android.view.View
 import android.widget.Button
@@ -23,7 +19,6 @@ import com.example.homemonitor.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
-import okhttp3.Request
 import java.net.InetSocketAddress
 import java.net.Proxy
 
@@ -45,6 +40,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var panelCamera: View
     private lateinit var panelGallery: View
     private lateinit var btnQuit: Button
+    private lateinit var btnShowConnectedFeeds: Button
 
     // Camera-Zustand UI (inside panelCamera)
     private lateinit var cameraPreview: androidx.camera.view.PreviewView
@@ -92,12 +88,14 @@ class MainActivity : AppCompatActivity() {
             .proxy(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", 9050)))
             .build()
 
-        // Komponenten initialisieren
+        // UI-Initialisierung (view IDs vorab klären, ohne Camera/Sensor Zugriff)
+        initUi()
+
+        // Buttons initialisieren
+        setupListeners()
+
+        // Dienste, die keine Kamera-Berechtigung brauchen, vorab starten
         onionStore = OnionStore.get() ?: OnionStore.init(this)
-        cameraManager = CameraManager.get() ?: CameraManager.init(this, binding.cameraPreview) { bytes ->
-            latestJpeg = bytes
-        }
-        cameraManager.bindToLifecycle(this)
         sensorManager = SensorManager.get() ?: SensorManager.init(this)
         sensorManager.start()
         localWebServer = LocalWebServer.get() ?: LocalWebServer.init(
@@ -106,19 +104,20 @@ class MainActivity : AppCompatActivity() {
             { sensorManager.collectJson() },
             okHttpClient
         )
+        // CameraManager initialisieren (ohne Bindung bis Berechtigung erteilt ist)
+        cameraManager = CameraManager.get() ?: CameraManager.init(this, binding.cameraPreview) { bytes ->
+            latestJpeg = bytes
+        }
 
-        // UI-Initialisierung
-        initUi()
-
-        // Buttons initialisieren und Listener setzen
-        setupListeners()
-
-        // Startzustand: Kamera
+        // Startzustand: Kamera panel sichtbar, Gallery unsichtbar
         setState(AppState.CAMERA)
 
-        // Kamera-Berechtigung anfordern
+        // Kamera-Berechtigung anfordern (NACH UI-Setup)
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), REQUEST_CAMERA)
+        } else {
+            // Berechtigung bereits erteilt: Kamera an Lifecycle binden
+            cameraManager.bindToLifecycle(this)
         }
     }
 
@@ -128,6 +127,7 @@ class MainActivity : AppCompatActivity() {
         panelCamera = findViewById(R.id.panelCamera)
         panelGallery = findViewById(R.id.panelGallery)
         btnQuit = findViewById(R.id.btnQuit)
+        btnShowConnectedFeeds = findViewById(R.id.btnShowConnectedFeeds)
 
         // Camera-Zustand
         cameraPreview = findViewById(R.id.cameraPreview)
@@ -176,6 +176,9 @@ class MainActivity : AppCompatActivity() {
 
         // Gallery-Zustand Listener
         btnCameraMode.setOnClickListener { setState(AppState.CAMERA) }
+
+        // Show connected feeds (wird im Kamera-Zustand verwendet)
+        btnShowConnectedFeeds.setOnClickListener { setState(AppState.GALLERY) }
     }
 
     private fun setState(newState: AppState) {
@@ -241,7 +244,10 @@ class MainActivity : AppCompatActivity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_CAMERA) {
-            // Berechtigungsergebnis auswerten
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                // Berechtigung erteilt: Kamera an Lifecycle binden
+                cameraManager.bindToLifecycle(this)
+            }
         }
     }
 
