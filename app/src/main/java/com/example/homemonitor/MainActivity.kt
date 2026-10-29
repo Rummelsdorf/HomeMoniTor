@@ -85,8 +85,8 @@ class MainActivity : AppCompatActivity() {
         if (!isOrbotAccessible()) {
             AlertDialog.Builder(this)
                 .setTitle("Orbot nicht erreichbar")
-                .setMessage("Orbot (Tor) läuft nicht oder ist nicht über 127.0.0.1:9051 erreichbar. Bitte Orbot starten und bestätigen.")
-                .setPositiveButton("Erkannt / Weiter") { _, _ -> }
+                .setMessage("Orbot (Tor) läuft nicht oder ist nicht über 127.0.0.1:9051 erreichbar. Bitte Orbot starten und bestätigen. Die App wird danach beendet.")
+                .setPositiveButton("Bestätigt / Beenden") { _, _ -> finish() }
                 .setCancelable(false)
                 .show()
         }
