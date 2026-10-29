@@ -175,9 +175,7 @@ class MainActivity : AppCompatActivity() {
 
         // Versions-Info (sichtbar für Unterscheidung)
         val versionText = findViewById<TextView>(R.id.tvVersion)
-        val pInfo = packageManager.getPackageInfo(packageName, 0)
-        val code = try { pInfo.longVersionCode.toString() } catch (e: Exception) { pInfo.versionCode.toString() }
-        versionText.text = "HM v${pInfo.versionName} (code $code) — build 2026-10-29"
+        versionText.text = "HM v${BuildConfig.VERSION_NAME} (code ${BuildConfig.VERSION_CODE}) — ${BuildConfig.BUILD_DATE}"
     }
 
     private fun setupListeners() {
