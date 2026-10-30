@@ -61,23 +61,24 @@ class CameraManager private constructor(
     }
 
     private fun bindPreview(lifecycleOwner: androidx.lifecycle.LifecycleOwner) {
-        val preview = Preview.Builder().build()
-        preview.setSurfaceProvider(previewView.surfaceProvider)
-
-        imageCapture = ImageCapture.Builder()
-            .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
-            .build()
-
-        val cameraSelector = CameraSelector.Builder()
-            .requireLensFacing(lensFacing)
-            .build()
-
-        cameraProvider?.unbindAll()
         try {
+            val preview = Preview.Builder().build()
+            preview.setSurfaceProvider(previewView.surfaceProvider)
+
+            imageCapture = ImageCapture.Builder()
+                .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+                .build()
+
+            val cameraSelector = CameraSelector.Builder()
+                .requireLensFacing(lensFacing)
+                .build()
+
+            cameraProvider?.unbindAll()
             cameraProvider?.bindToLifecycle(
                 lifecycleOwner,
                 cameraSelector, preview, imageCapture
             )
+            Log.d("CameraManager", "Camera gebunden")
         } catch (e: Exception) {
             Log.e("CameraManager", "bindToLifecycle fehlgeschlagen", e)
         }
