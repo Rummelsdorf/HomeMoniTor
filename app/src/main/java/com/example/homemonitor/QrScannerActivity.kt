@@ -1,5 +1,7 @@
 package com.example.homemonitor
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
@@ -9,6 +11,7 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.example.homemonitor.databinding.ActivityQrScannerBinding
 import com.google.zxing.BinaryBitmap
@@ -18,15 +21,10 @@ import com.google.zxing.common.HybridBinarizer
 import com.google.zxing.Result
 import java.util.concurrent.Executors
 
-/**
- * QR-Scanner für Onion-Adressen (CameraX + ZXing).
- * Nach erfolgreichem Scan wird die Adresse dem [OnionStore] hinzugefügt
- * und der Scan-Flow beendet.
- */
 class QrScannerActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityQrScannerBinding
-    private lateinit var cameraProvider: ProcessCameraProvider
+    private var cameraProvider: ProcessCameraProvider? = null
     private val cameraExecutor = Executors.newSingleThreadExecutor()
     private val barcodeReader = MultiFormatReader()
 
@@ -36,6 +34,15 @@ class QrScannerActivity : AppCompatActivity() {
         setContentView(binding.root)
         setSupportActionBar(binding.toolbar)
 
+        // Kamera-Berechtigung anfordern
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), REQUEST_CAMERA)
+        } else {
+            initCamera()
+        }
+    }
+
+    private fun initCamera() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
         cameraProviderFuture.addListener({
             cameraProvider = cameraProviderFuture.get()
@@ -44,22 +51,28 @@ class QrScannerActivity : AppCompatActivity() {
     }
 
     private fun bindPreview() {
-        val preview = Preview.Builder().build()
-        preview.setSurfaceProvider(binding.scannerPreview.surfaceProvider)
+        try {
+            val preview = Preview.Builder().build()
+            preview.setSurfaceProvider(binding.scannerPreview.surfaceProvider)
 
-        val imageAnalysis = ImageAnalysis.Builder()
-            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-            .build()
-        imageAnalysis.setAnalyzer(cameraExecutor, ImageAnalysis.Analyzer { imageProxy: ImageProxy ->
-            handleFrame(imageProxy)
-        })
+            val imageAnalysis = ImageAnalysis.Builder()
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .build()
+            imageAnalysis.setAnalyzer(cameraExecutor, ImageAnalysis.Analyzer { imageProxy: ImageProxy ->
+                handleFrame(imageProxy)
+            })
 
-        cameraProvider.bindToLifecycle(
-            this,
-            CameraSelector.DEFAULT_BACK_CAMERA,
-            imageAnalysis,
-            preview
-        )
+            cameraProvider?.unbindAll()
+            cameraProvider?.bindToLifecycle(
+                this,
+                CameraSelector.DEFAULT_BACK_CAMERA,
+                imageAnalysis,
+                preview
+            )
+        } catch (e: Exception) {
+            Log.e("QrScannerActivity", "Camera-Bindung fehlgeschlagen", e)
+            Toast.makeText(this, "Kamera nicht verfügbar", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun handleFrame(imageProxy: ImageProxy) {
@@ -96,8 +109,21 @@ class QrScannerActivity : AppCompatActivity() {
         finish()
     }
 
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_CAMERA) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                initCamera()
+            }
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         cameraExecutor.shutdown()
+    }
+
+    companion object {
+        private const val REQUEST_CAMERA = 1001
     }
 }

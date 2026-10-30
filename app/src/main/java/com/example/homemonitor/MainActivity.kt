@@ -83,7 +83,8 @@ class MainActivity : AppCompatActivity() {
     }
     private var currentState: AppState = AppState.CAMERA
 
-    // Thread-sicherer Zugriff auf latestJpeg
+    // Thread-sicherer Zugriff auf latestJpeg (Camera + Webserver + UI)
+    private val jpegLock = Any()
     @Volatile private var latestJpeg: ByteArray? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -131,7 +132,9 @@ class MainActivity : AppCompatActivity() {
         )
         // CameraManager initialisieren (ohne Bindung bis Berechtigung erteilt ist)
         cameraManager = CameraManager.get() ?: CameraManager.init(this, binding.cameraPreview) { bytes ->
-            latestJpeg = bytes
+            synchronized(jpegLock) {
+                latestJpeg = bytes
+            }
         }
 
         // Startzustand: Kamera panel sichtbar, Gallery unsichtbar

@@ -2,6 +2,7 @@ package com.example.homemonitor
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -40,7 +41,11 @@ class GalleryAdapter(private val context: Context) : BaseAdapter() {
         } else {
             LayoutInflater.from(context).inflate(R.layout.item_gallery, parent, false) as ImageView
         }
-        imageView.setImageBitmap(items[position])
+        try {
+            imageView.setImageBitmap(items[position])
+        } catch (e: OutOfMemoryError) {
+            Log.e("GalleryAdapter", "OOM bei Bild", e)
+        }
         return imageView
     }
 }
