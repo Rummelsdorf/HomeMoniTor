@@ -23,6 +23,9 @@ import okhttp3.OkHttpClient
 import info.guardianproject.netcipher.proxy.OrbotHelper
 import java.net.InetSocketAddress
 import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
 import java.net.Proxy
 
 /**
@@ -256,8 +259,11 @@ class MainActivity : AppCompatActivity() {
     private fun startHiddenService() {
         try {
             if (OrbotHelper.isOrbotInstalled(this)) {
+                // Intent-API: Hidden Service registrieren
                 OrbotHelper.requestV3OnionServiceOnPort(this, LOCAL_PORT, ORBOT_ONION_PORT, ORBOT_SERVICE_NAME)
                 tvStatus.text = getString(R.string.status_service_started)
+                // Status-Update via Broadcast empfangen (Orbot antwortet oft per Broadcast)
+                registerReceiver(orbotStatusReceiver, IntentFilter(OrbotHelper.ACTION_STATUS))
             } else {
                 AlertDialog.Builder(this)
                     .setTitle("Orbot nicht installiert")
@@ -269,6 +275,28 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             android.util.Log.e("HomeMoniTor", "Hidden Service Intent fehlgeschlagen", e)
             Toast.makeText(this, "Hidden Service-Request fehlgeschlagen: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private val orbotStatusReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == OrbotHelper.ACTION_STATUS) {
+                val status = intent.getStringExtra(OrbotHelper.EXTRA_STATUS)
+                val pkg = intent.getStringExtra(OrbotHelper.EXTRA_PACKAGE_NAME)
+                Log.d("OrbotStatus", "Status=$status pkg=$pkg")
+                // Wenn Orbot aktiv ist, prüfen wir, ob eine Onion-Adresse im Intent steckt
+                val onionFromBroadcast = intent.getStringExtra("onion_address")
+                    ?: intent.getStringExtra("address")
+                    ?: intent.getStringExtra("service_id")
+                if (!onionFromBroadcast.isNullOrBlank()) {
+                    val addr = onionFromBroadcast.trim().lowercase()
+                    onionStore.add(addr)
+                    tvOnionAddress.text = addr
+                    ivQr.setImageBitmap(QrGenerator.generate(addr, 512))
+                    ivQr.visibility = View.VISIBLE
+                    Toast.makeText(context, "Hidden Service aktiv: $addr", Toast.LENGTH_LONG).show()
+                }
+            }
         }
     }
 
@@ -329,6 +357,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        try { unregisterReceiver(orbotStatusReceiver) } catch (e: Exception) { }
         sensorManager.stop()
         cameraManager.shutdown()
         try { okHttpClient.dispatcher.executorService.shutdown() } catch (e: Exception) { }
