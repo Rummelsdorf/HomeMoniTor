@@ -128,6 +128,9 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // Start Hidden Service automatisch beim ersten Start
+        startHiddenService()
+
         // Startzustand: Kamera panel sichtbar, Gallery unsichtbar
         setState(AppState.CAMERA)
 
@@ -181,20 +184,10 @@ class MainActivity : AppCompatActivity() {
         btnQuit.setOnClickListener { finish() }
 
         // Kamera-Zustand Listener
+        // Startzustand: Dienst beim ersten Start automatisch registrieren
         btnStartService.setOnClickListener {
             localWebServer.start()
-            if (OrbotHelper.isOrbotInstalled(this)) {
-                OrbotHelper.requestV3OnionServiceOnPort(this, LOCAL_PORT, ORBOT_ONION_PORT, ORBOT_SERVICE_NAME)
-                tvStatus.text = getString(R.string.status_service_started)
-            } else {
-                // Orbot nicht installiert: App mit Bestätigung beenden
-                AlertDialog.Builder(this)
-                    .setTitle("Orbot nicht installiert")
-                    .setMessage("Orbot (Tor) ist nicht installiert. Zum Starten des Hidden Service ist Orbot erforderlich. Bestätigen beendet die App.")
-                    .setPositiveButton("Bestätigt / Beenden") { _, _ -> finish() }
-                    .setCancelable(false)
-                    .show()
-            }
+            tvStatus.text = getString(R.string.status_service_started)
         }
         btnStopService.setOnClickListener {
             localWebServer.stop()
@@ -259,6 +252,20 @@ class MainActivity : AppCompatActivity() {
 
     private fun decodeBitmap(bytes: ByteArray): Bitmap? =
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = 2 })
+
+    private fun startHiddenService() {
+        if (OrbotHelper.isOrbotInstalled(this)) {
+            OrbotHelper.requestV3OnionServiceOnPort(this, LOCAL_PORT, ORBOT_ONION_PORT, ORBOT_SERVICE_NAME)
+            tvStatus.text = getString(R.string.status_service_started)
+        } else {
+            AlertDialog.Builder(this)
+                .setTitle("Orbot nicht installiert")
+                .setMessage("Orbot (Tor) ist nicht installiert. Zum Starten des Hidden Service ist Orbot erforderlich. Bestätigen beendet die App.")
+                .setPositiveButton("Bestätigt / Beenden") { _, _ -> finish() }
+                .setCancelable(false)
+                .show()
+        }
+    }
 
     private fun readSensors() {
         val json = sensorManager.collectJson()
