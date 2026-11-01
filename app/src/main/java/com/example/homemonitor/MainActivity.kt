@@ -20,7 +20,9 @@ import com.example.homemonitor.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import info.guardianproject.netcipher.proxy.OrbotHelper
 import java.net.InetSocketAddress
+import android.content.Intent
 import java.net.Proxy
 
 /**
@@ -34,10 +36,14 @@ import java.net.Proxy
 class MainActivity : AppCompatActivity() {
 
     // Globaler Crash-Handler: jede Exception sichtbar machen
+    // (an den vorherigen Handler weiterleiten, damit der Prozess sauber abstürzen kann)
+    private val previousUncaughtExceptionHandler = Thread.getDefaultUncaughtExceptionHandler()
+
     init {
         Thread.setDefaultUncaughtExceptionHandler { _, e ->
             android.util.Log.e("HomeMoniTorCrash", "FATAL: App stürzt ab", e)
             e.printStackTrace()
+            previousUncaughtExceptionHandler?.uncaughtException(Thread.currentThread(), e)
         }
     }
 
@@ -94,24 +100,9 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
         setSupportActionBar(binding.toolbar)
 
-        // Orbot-Check im Hintergrund (blockiert nicht UI)
-        Thread {
-            val reachable = isOrbotAccessible()
-            runOnUiThread {
-                if (!reachable) {
-                    AlertDialog.Builder(this@MainActivity)
-                        .setTitle("Orbot nicht erreichbar")
-                        .setMessage("Orbot (Tor) läuft nicht oder 127.0.0.1:9051 nicht erreichbar. Bestätigen beendet die App.")
-                        .setPositiveButton("Bestätigt / Beenden") { _, _ -> finish() }
-                        .setCancelable(false)
-                        .show()
-                }
-            }
-        }.start()
-
         // OkHttp-Client für Remote-Fetch über Tor SOCKS-Proxy (Orbot)
         okHttpClient = OkHttpClient.Builder()
-            .proxy(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", 9050)))
+            .proxy(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", ORBOT_SOCKS_PORT)))
             .build()
 
         // UI-Initialisierung (view IDs vorab klären, ohne Camera/Sensor Zugriff)
@@ -192,8 +183,18 @@ class MainActivity : AppCompatActivity() {
         // Kamera-Zustand Listener
         btnStartService.setOnClickListener {
             localWebServer.start()
-            OrbotHiddenService.get()?.start()
-            tvStatus.text = getString(R.string.status_service_started)
+            if (OrbotHelper.isOrbotInstalled(this)) {
+                OrbotHelper.requestV3OnionServiceOnPort(this, LOCAL_PORT, ORBOT_ONION_PORT, ORBOT_SERVICE_NAME)
+                tvStatus.text = getString(R.string.status_service_started)
+            } else {
+                // Orbot nicht installiert: App mit Bestätigung beenden
+                AlertDialog.Builder(this)
+                    .setTitle("Orbot nicht installiert")
+                    .setMessage("Orbot (Tor) ist nicht installiert. Zum Starten des Hidden Service ist Orbot erforderlich. Bestätigen beendet die App.")
+                    .setPositiveButton("Bestätigt / Beenden") { _, _ -> finish() }
+                    .setCancelable(false)
+                    .show()
+            }
         }
         btnStopService.setOnClickListener {
             localWebServer.stop()
@@ -278,6 +279,25 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 3333) { // V3_ONION_SERVICE_REQUEST_CODE
+            val onion = data?.getStringExtra("onion_address")
+                ?: data?.getStringExtra("service_id")
+                ?: (if (data?.hasExtra("address") == true) data.getStringExtra("address") else null)
+            if (!onion.isNullOrBlank()) {
+                val addr = onion.trim().lowercase()
+                onionStore.add(addr)
+                tvOnionAddress.text = addr
+                ivQr.setImageBitmap(QrGenerator.generate(addr, 512))
+                ivQr.visibility = View.VISIBLE
+                Toast.makeText(this, "Hidden Service: $addr", Toast.LENGTH_LONG).show()
+            } else {
+                Toast.makeText(this, "Hidden Service-Registrierung fehlgeschlagen oder abgebrochen", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_CAMERA) {
@@ -295,28 +315,11 @@ class MainActivity : AppCompatActivity() {
         try { okHttpClient.dispatcher.executorService.shutdown() } catch (e: Exception) { }
     }
 
-    private fun isOrbotAccessible(): Boolean = try {
-        val socket = java.net.Socket()
-        socket.connect(java.net.InetSocketAddress("127.0.0.1", 9051), 3000)
-        socket.soTimeout = 3000
-        val out = java.io.BufferedWriter(java.io.OutputStreamWriter(socket.outputStream, "UTF-8"))
-        val reader = java.io.BufferedReader(java.io.InputStreamReader(socket.inputStream, "UTF-8"))
-        // Willkommenszeile lesen
-        var line: String?
-        do { line = reader.readLine() } while (line != null && !line!!.startsWith("250"))
-        // AUTHENTICATE ohne Passwort versuchen (Standard für Orbot)
-        out.write("AUTHENTICATE \"\"\r\n")
-        out.flush()
-        val authResp = reader.readLine()
-        socket.close()
-        authResp != null && (authResp.contains("250") || authResp.contains("OK"))
-    } catch (e: Exception) {
-        android.util.Log.w("OrbotCheck", "Orbot nicht erreichbar", e)
-        false
-    }
-
     private companion object {
         const val LOCAL_PORT = 8080
+        const val ORBOT_SOCKS_PORT = 9050
+        const val ORBOT_ONION_PORT = 80
+        const val ORBOT_SERVICE_NAME = "HomeMoniTor"
         const val REQUEST_CAMERA = 1001
     }
 }

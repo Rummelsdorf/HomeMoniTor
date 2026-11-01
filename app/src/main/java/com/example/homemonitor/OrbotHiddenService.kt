@@ -14,7 +14,7 @@ import kotlin.concurrent.thread
 /**
  * Best-Effort-Integration mit Orbot (Tor für Android).
  *
- * Orbot stellt standardmäßig einen Tor-Control-Port auf 127.0.0.1:9051 bereit.
+ * Orbot stellt standardmäßig einen Tor-Control-Port bereit.
  * Diese Klasse versucht, einen Hidden Service (ADD_ONION) anzulegen,
  * der den lokalen Webserver (Port 8080) ins Tor-Netzwerk exponiert.
  *
@@ -52,6 +52,7 @@ class OrbotHiddenService private constructor(private val context: Context) {
 
         private const val KEY_ONION_KEY = "onion_key_v1"
         private const val ONION_LIFETIME_SECONDS = 31536000
+        private const val ORBOT_CONTROL_PORT = 8118
 
         fun init(context: Context): OrbotHiddenService {
             return instance ?: synchronized(this) {
@@ -79,7 +80,7 @@ class OrbotHiddenService private constructor(private val context: Context) {
             // Hidden Service beim Stop über den Tor Control Port entfernen
             try {
                 val socket = Socket()
-                socket.connect(java.net.InetSocketAddress("127.0.0.1", 9051), 3000)
+                socket.connect(java.net.InetSocketAddress("127.0.0.1", ORBOT_CONTROL_PORT), 3000)
                 socket.soTimeout = 5000
                 val out = BufferedWriter(OutputStreamWriter(socket.outputStream, "UTF-8"))
                 val reader = BufferedReader(InputStreamReader(socket.inputStream, "UTF-8"))
@@ -117,7 +118,7 @@ class OrbotHiddenService private constructor(private val context: Context) {
     }
 
     private fun tryAddress() {
-        // 1) Versuch über Orbot Control Port (9051); mit persistentem Key für stabile Adresse
+        // 1) Versuch über Orbot Control Port (8118); mit persistentem Key für stabile Adresse
         address = tryControlPort(getOrCreateOnionKey())
         if (address != null) {
             Log.i("OrbotHiddenService", "Hidden Service aktiv: $address")
@@ -129,7 +130,7 @@ class OrbotHiddenService private constructor(private val context: Context) {
     private fun tryControlPort(onionKey: String?): String? {
         val socket = Socket()
         try {
-            socket.connect(java.net.InetSocketAddress("127.0.0.1", 9051), 3000)
+            socket.connect(java.net.InetSocketAddress("127.0.0.1", ORBOT_CONTROL_PORT), 3000)
             socket.soTimeout = 5000
             val out = BufferedWriter(OutputStreamWriter(socket.outputStream, "UTF-8"))
             val reader = BufferedReader(InputStreamReader(socket.inputStream, "UTF-8"))
