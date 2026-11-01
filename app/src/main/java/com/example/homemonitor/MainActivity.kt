@@ -254,16 +254,21 @@ class MainActivity : AppCompatActivity() {
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = 2 })
 
     private fun startHiddenService() {
-        if (OrbotHelper.isOrbotInstalled(this)) {
-            OrbotHelper.requestV3OnionServiceOnPort(this, LOCAL_PORT, ORBOT_ONION_PORT, ORBOT_SERVICE_NAME)
-            tvStatus.text = getString(R.string.status_service_started)
-        } else {
-            AlertDialog.Builder(this)
-                .setTitle("Orbot nicht installiert")
-                .setMessage("Orbot (Tor) ist nicht installiert. Zum Starten des Hidden Service ist Orbot erforderlich. Bestätigen beendet die App.")
-                .setPositiveButton("Bestätigt / Beenden") { _, _ -> finish() }
-                .setCancelable(false)
-                .show()
+        try {
+            if (OrbotHelper.isOrbotInstalled(this)) {
+                OrbotHelper.requestV3OnionServiceOnPort(this, LOCAL_PORT, ORBOT_ONION_PORT, ORBOT_SERVICE_NAME)
+                tvStatus.text = getString(R.string.status_service_started)
+            } else {
+                AlertDialog.Builder(this)
+                    .setTitle("Orbot nicht installiert")
+                    .setMessage("Orbot (Tor) ist nicht installiert. Zum Starten des Hidden Service ist Orbot erforderlich. Bestätigen beendet die App.")
+                    .setPositiveButton("Bestätigt / Beenden") { _, _ -> finish() }
+                    .setCancelable(false)
+                    .show()
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("HomeMoniTor", "Hidden Service Intent fehlgeschlagen", e)
+            Toast.makeText(this, "Hidden Service-Request fehlgeschlagen: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -287,20 +292,27 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
+        try {
+            super.onActivityResult(requestCode, resultCode, data)
+        } catch (e: Exception) { }
         if (requestCode == 3333) { // V3_ONION_SERVICE_REQUEST_CODE
-            val onion = data?.getStringExtra("onion_address")
-                ?: data?.getStringExtra("service_id")
-                ?: (if (data?.hasExtra("address") == true) data.getStringExtra("address") else null)
-            if (!onion.isNullOrBlank()) {
-                val addr = onion.trim().lowercase()
-                onionStore.add(addr)
-                tvOnionAddress.text = addr
-                ivQr.setImageBitmap(QrGenerator.generate(addr, 512))
-                ivQr.visibility = View.VISIBLE
-                Toast.makeText(this, "Hidden Service: $addr", Toast.LENGTH_LONG).show()
-            } else {
-                Toast.makeText(this, "Hidden Service-Registrierung fehlgeschlagen oder abgebrochen", Toast.LENGTH_LONG).show()
+            try {
+                val onion = data?.getStringExtra("onion_address")
+                    ?: data?.getStringExtra("service_id")
+                    ?: (if (data?.hasExtra("address") == true) data.getStringExtra("address") else null)
+                if (!onion.isNullOrBlank()) {
+                    val addr = onion.trim().lowercase()
+                    onionStore.add(addr)
+                    tvOnionAddress.text = addr
+                    ivQr.setImageBitmap(QrGenerator.generate(addr, 512))
+                    ivQr.visibility = View.VISIBLE
+                    Toast.makeText(this, "Hidden Service: $addr", Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this, "Hidden Service-Registrierung fehlgeschlagen oder abgebrochen", Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("MainActivity", "onActivityResult Fehler", e)
+                Toast.makeText(this, "Fehler beim Verarbeiten der Onion-Antwort", Toast.LENGTH_LONG).show()
             }
         }
     }
