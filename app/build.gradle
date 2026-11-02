@@ -52,9 +52,6 @@ dependencies {
     implementation "androidx.camera:camera-lifecycle:${camerax_version}"
     implementation "androidx.camera:camera-view:1.4.0-alpha04"
 
-    // NetCipher: Orbot-Integration (Intent-API für Hidden Service + Proxys)
-    implementation 'info.guardianproject.netcipher:netcipher:2.2.0-alpha'
-
     // ZXing Core (QR generieren & scannen)
     implementation 'com.google.zxing:core:3.5.3'
 
