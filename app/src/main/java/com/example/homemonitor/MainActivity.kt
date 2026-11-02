@@ -100,93 +100,108 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        try {
+            onionManager = OrbotOnionManager(
+                activity = this,
 
-        onionManager = OrbotOnionManager(
-            activity = this,
+                onAddressReceived = { address ->
+                    runOnUiThread {
+                        try {
+                            val addr = address.trim().lowercase()
+                            onionStore.add(addr)
+                            tvOnionAddress.text = addr
+                            tvStatus.text = getString(R.string.status_service_started)
+                            ivQr.setImageBitmap(QrGenerator.generate(addr, 512))
+                            ivQr.visibility = View.VISIBLE
+                            Toast.makeText(this, "Hidden Service aktiv: $addr", Toast.LENGTH_LONG).show()
+                        } catch (e: Exception) {
+                            Log.e("MainActivity", "Callback Fehler", e)
+                            Toast.makeText(this, "Fehler bei Onion-Antwort: ${e.message}", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                },
 
-            onAddressReceived = { address ->
-                runOnUiThread {
-                    val addr = address.trim().lowercase()
+                onError = { error ->
+                    runOnUiThread {
+                        try {
+                            tvStatus.text = "Fehler: $error"
+                            Toast.makeText(this, error, Toast.LENGTH_LONG).show()
+                        } catch (e: Exception) {
+                            Log.e("MainActivity", "Callback Fehler", e)
+                        }
+                    }
+                }
+            )
+
+            val savedAddress = onionManager.getSavedOnionAddress()
+            if (savedAddress != null) {
+                try {
+                    val addr = savedAddress.trim().lowercase()
                     onionStore.add(addr)
                     tvOnionAddress.text = addr
-                    tvStatus.text = getString(R.string.status_service_started)
-                    ivQr.setImageBitmap(QrGenerator.generate(addr, 512))
-                    ivQr.visibility = View.VISIBLE
-                    Toast.makeText(this, "Hidden Service aktiv: $addr", Toast.LENGTH_LONG).show()
-                    println("Onion-Adresse: $addr")
-                }
-            },
-
-            onError = { error ->
-                runOnUiThread {
-                    tvStatus.text = "Fehler: $error"
-                    println("Fehler: $error")
-                    Toast.makeText(this, error, Toast.LENGTH_LONG).show()
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Gespeicherte Adresse laden fehlgeschlagen", e)
+                    Toast.makeText(this, "Gespeicherte Adresse laden fehlgeschlagen", Toast.LENGTH_SHORT).show()
                 }
             }
-        )
 
-        // Bereits gespeicherte Adresse laden und UI aktualisieren
-        val savedAddress = onionManager.getSavedOnionAddress()
-        if (savedAddress != null) {
-            val addr = savedAddress.trim().lowercase()
-            onionStore.add(addr)
-            tvOnionAddress.text = addr
-            println("Gespeicherte Adresse: $addr")
-        }
-
-        // Hidden Service über Intent-API (OrbotOnionManager) starten
-        if (onionManager.isOrbotInstalled()) {
-            onionManager.requestOnionService()
-        } else {
-            AlertDialog.Builder(this)
-                .setTitle("Orbot nicht installiert")
-                .setMessage("Orbot (Tor) ist nicht installiert. Zum Starten des Hidden Service ist Orbot erforderlich.")
-                .setPositiveButton("OK") { _, _ -> }
-                .show()
-        }
-
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-        setSupportActionBar(binding.toolbar)
-
-        // OkHttp-Client für Remote-Fetch über Tor SOCKS-Proxy (Orbot)
-        okHttpClient = OkHttpClient.Builder()
-            .proxy(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", ORBOT_SOCKS_PORT)))
-            .build()
-
-        // UI-Initialisierung (view IDs vorab klären, ohne Camera/Sensor Zugriff)
-        initUi()
-
-        // Buttons initialisieren
-        setupListeners()
-
-        // Dienste, die keine Kamera-Berechtigung brauchen, vorab starten
-        onionStore = OnionStore.get() ?: OnionStore.init(this)
-        sensorManager = SensorManager.get() ?: SensorManager.init(this)
-        sensorManager.start()
-        localWebServer = LocalWebServer.get() ?: LocalWebServer.init(
-            LOCAL_PORT,
-            { cam -> latestJpeg },
-            { sensorManager.collectJson() },
-            okHttpClient
-        )
-        // CameraManager initialisieren (ohne Bindung bis Berechtigung erteilt ist)
-        cameraManager = CameraManager.get() ?: CameraManager.init(this, binding.cameraPreview) { bytes ->
-            synchronized(jpegLock) {
-                latestJpeg = bytes
+            if (onionManager.isOrbotInstalled()) {
+                try {
+                    onionManager.requestOnionService()
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Orbot Request fehlgeschlagen", e)
+                    Toast.makeText(this, "Orbot-Request fehlgeschlagen: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            } else {
+                AlertDialog.Builder(this)
+                    .setTitle("Orbot nicht installiert")
+                    .setMessage("Orbot (Tor) ist nicht installiert. Zum Starten des Hidden Service ist Orbot erforderlich.")
+                    .setPositiveButton("OK") { _, _ -> }
+                    .show()
             }
-        }
 
-        // Startzustand: Kamera panel sichtbar, Gallery unsichtbar
-        setState(AppState.CAMERA)
+            binding = ActivityMainBinding.inflate(layoutInflater)
+            setContentView(binding.root)
+            setSupportActionBar(binding.toolbar)
 
-        // Kamera-Berechtigung anfordern (NACH UI-Setup)
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), REQUEST_CAMERA)
-        } else {
-            // Berechtigung bereits erteilt: Kamera an Lifecycle binden
-            cameraManager.bindToLifecycle(this)
+            okHttpClient = OkHttpClient.Builder()
+                .proxy(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", ORBOT_SOCKS_PORT)))
+                .build()
+
+            initUi()
+            setupListeners()
+
+            onionStore = OnionStore.get() ?: OnionStore.init(this)
+            sensorManager = SensorManager.get() ?: SensorManager.init(this)
+            sensorManager.start()
+            localWebServer = LocalWebServer.get() ?: LocalWebServer.init(
+                LOCAL_PORT,
+                { cam -> latestJpeg },
+                { sensorManager.collectJson() },
+                okHttpClient
+            )
+            cameraManager = CameraManager.get() ?: CameraManager.init(this, binding.cameraPreview) { bytes ->
+                synchronized(jpegLock) {
+                    latestJpeg = bytes
+                }
+            }
+
+            setState(AppState.CAMERA)
+
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), REQUEST_CAMERA)
+            } else {
+                cameraManager.bindToLifecycle(this)
+            }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "onCreate CRASH", e)
+            Toast.makeText(this, "App-Start fehlgeschlagen: ${e.message}", Toast.LENGTH_LONG).show()
+            e.printStackTrace()
+            try {
+                setContentView(R.layout.activity_main)
+            } catch (e2: Exception) {
+                // letzter Notfall
+            }
         }
     }
 
