@@ -49,6 +49,7 @@ class OrbotOnionManager(
             onAddressReceived(onionAddress)
         }
 
+    // Orbot-Installation prüfen (Package Visibility nötig)
     fun isOrbotInstalled(): Boolean {
         return try {
             activity.packageManager.getPackageInfo(
@@ -61,6 +62,8 @@ class OrbotOnionManager(
         }
     }
 
+    // V3-Onion-Service über Intent-API an Orbot senden
+    // Ergebnis wird über ActivityResultContracts.StartActivityForResult zurückgegeben
     fun requestOnionService() {
         if (!isOrbotInstalled()) {
             onError("Orbot ist nicht installiert.")
@@ -82,6 +85,7 @@ class OrbotOnionManager(
         }
     }
 
+    // Gespeicherte Onion-Adresse in SharedPreferences ablegen
     private fun saveOnionAddress(address: String) {
         activity.getSharedPreferences(
             "onion_service",
@@ -91,6 +95,7 @@ class OrbotOnionManager(
             .apply()
     }
 
+    // Gespeicherte Onion-Adresse aus SharedPreferences laden
     fun getSavedOnionAddress(): String? {
         return activity.getSharedPreferences(
             "onion_service",

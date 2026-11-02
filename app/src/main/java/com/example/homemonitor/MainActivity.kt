@@ -96,6 +96,14 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         try {
+            binding = ActivityMainBinding.inflate(layoutInflater)
+            setContentView(binding.root)
+            setSupportActionBar(binding.toolbar)
+
+            // UI-Elemente erst binden, bevor Callbacks ausgelöst werden können
+            initUi()
+            setupListeners()
+
             onionManager = OrbotOnionManager(
                 activity = this,
 
@@ -155,10 +163,6 @@ class MainActivity : AppCompatActivity() {
                     .show()
             }
 
-            binding = ActivityMainBinding.inflate(layoutInflater)
-            setContentView(binding.root)
-            setSupportActionBar(binding.toolbar)
-
             okHttpClient = OkHttpClient.Builder()
                 .proxy(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", ORBOT_SOCKS_PORT)))
                 .build()
@@ -200,6 +204,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // UI-Elemente initialisieren (IDs finden und Variablen zuweisen)
     private fun initUi() {
         btnStateCamera = findViewById(R.id.btnStateCamera)
         btnStateGallery = findViewById(R.id.btnStateGallery)
@@ -232,6 +237,7 @@ class MainActivity : AppCompatActivity() {
         versionText.text = "HM v${BuildConfig.VERSION_NAME} (code ${BuildConfig.VERSION_CODE}) — ${BuildConfig.BUILD_DATE}"
     }
 
+    // Button-Listener für Zustandswechsel, Kamera, QR, Sensoren und Quit einrichten
     private fun setupListeners() {
         // Zustands-Wechsel Buttons
         btnStateCamera.setOnClickListener { setState(AppState.CAMERA) }
@@ -264,6 +270,7 @@ class MainActivity : AppCompatActivity() {
         btnShowConnectedFeeds.setOnClickListener { setState(AppState.GALLERY) }
     }
 
+    // Anwendung zwischen Kamera- und Gallery-Zustand umschalten
     private fun setState(newState: AppState) {
         currentState = newState
 
@@ -283,6 +290,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Gallery-Feeds aus dem Speicher laden und anzeigen
     private fun loadGalleryFeeds() {
         val addresses = onionStore.addresses
         val adapter = android.widget.ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, addresses)
@@ -307,14 +315,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Bitmap aus Byte-Array dekodieren (mit verkleinerter Auflösung)
     private fun decodeBitmap(bytes: ByteArray): Bitmap? =
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = 2 })
 
+    // Sensor-Daten als JSON sammeln und anzeigen
     private fun readSensors() {
         val json = sensorManager.collectJson()
         tvSensors.text = json ?: getString(R.string.sensors_empty)
     }
 
+    // Aktuelles Kamerabild in die Galerie speichern
     private fun saveCurrentSnapshotToGallery() {
         val bytes = latestJpeg ?: return
         val bmp = decodeBitmap(bytes)
