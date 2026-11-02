@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 
 class OrbotOnionManager(
     private val activity: ComponentActivity,
+    private val localPort: Int = 8080,
     private val onAddressReceived: (String) -> Unit,
     private val onError: (String) -> Unit
 ) {
@@ -20,7 +21,6 @@ class OrbotOnionManager(
         private const val EXTRA_HOSTNAME =
             "org.torproject.android.REQUESTED_V3_HOSTNAME"
 
-        private const val LOCAL_PORT = 8080
         private const val ONION_PORT = 80
     }
 
@@ -73,7 +73,7 @@ class OrbotOnionManager(
         val intent = Intent(ACTION_REQUEST_V3).apply {
             setPackage(ORBOT_PACKAGE)
 
-            putExtra("localPort", LOCAL_PORT)
+            putExtra("localPort", localPort)
             putExtra("onionPort", ONION_PORT)
             putExtra("name", "Meine Android App")
         }

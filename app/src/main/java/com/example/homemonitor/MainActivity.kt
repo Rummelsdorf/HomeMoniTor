@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.app.AlertDialog
 import android.graphics.BitmapFactory
+import android.content.Context
 import android.os.Bundle
 import android.util.Log
 import android.view.View
@@ -23,6 +24,8 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.net.InetSocketAddress
 import java.net.Proxy
+import java.net.ServerSocket
+import java.net.BindException
 import java.io.File
 
 /**
@@ -106,8 +109,12 @@ class MainActivity : AppCompatActivity() {
             initUi()
             setupListeners()
 
+            // Flexibler Port: 8080, 8081, ... prüfen und speichern
+            val webPort = findAndStoreFreePort()
+
             onionManager = OrbotOnionManager(
                 activity = this,
+                localPort = webPort,
 
                 onAddressReceived = { address ->
                     runOnUiThread {
@@ -180,7 +187,7 @@ class MainActivity : AppCompatActivity() {
             sensorManager = SensorManager.get() ?: SensorManager.init(this)
             sensorManager.start()
             localWebServer = LocalWebServer.get() ?: LocalWebServer.init(
-                LOCAL_PORT,
+                webPort,
                 { cam -> latestJpeg },
                 { sensorManager.collectJson() },
                 okHttpClient
@@ -386,6 +393,26 @@ class MainActivity : AppCompatActivity() {
         sensorManager.stop()
         cameraManager.shutdown()
         try { okHttpClient.dispatcher.executorService.shutdown() } catch (e: Exception) { }
+    }
+
+    // Flexible Port-Ermittlung: probiert 8080, 8081, ... und speichert das Ergebnis
+    private fun findAndStoreFreePort(): Int {
+        val prefs = getSharedPreferences("port_config", Context.MODE_PRIVATE)
+        val saved = prefs.getString("http_port", "8080")?.toIntOrNull() ?: 8080
+        for (candidate in saved until saved + 10) {
+            try {
+                val test = ServerSocket()
+                test.bind(InetSocketAddress("127.0.0.1", candidate))
+                test.close()
+                prefs.edit().putString("http_port", candidate.toString()).apply()
+                Log.d("MainActivity", "Webserver Port gefunden: $candidate")
+                return candidate
+            } catch (e: BindException) {
+                // Port bereits belegt, nächster Versuch
+            }
+        }
+        Log.w("MainActivity", "Kein freier Port im Bereich $saved-${saved + 9}")
+        return saved
     }
 
     private companion object {
