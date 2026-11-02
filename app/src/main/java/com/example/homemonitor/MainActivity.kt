@@ -96,8 +96,34 @@ class MainActivity : AppCompatActivity() {
     private val jpegLock = Any()
     @Volatile private var latestJpeg: ByteArray? = null
 
+    private lateinit var onionManager: OrbotOnionManager
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        onionManager = OrbotOnionManager(
+            activity = this,
+
+            onAddressReceived = { address ->
+                runOnUiThread {
+                    println("Onion-Adresse: $address")
+                    // Hier in deiner UI anzeigen
+                }
+            },
+
+            onError = { error ->
+                runOnUiThread {
+                    println("Fehler: $error")
+                }
+            }
+        )
+
+        // Bereits gespeicherte Adresse laden
+        val savedAddress = onionManager.getSavedOnionAddress()
+
+        if (savedAddress != null) {
+            println("Gespeicherte Adresse: $savedAddress")
+        }
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
