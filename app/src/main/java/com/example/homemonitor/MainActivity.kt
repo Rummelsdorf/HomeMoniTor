@@ -106,23 +106,44 @@ class MainActivity : AppCompatActivity() {
 
             onAddressReceived = { address ->
                 runOnUiThread {
-                    println("Onion-Adresse: $address")
-                    // Hier in deiner UI anzeigen
+                    val addr = address.trim().lowercase()
+                    onionStore.add(addr)
+                    tvOnionAddress.text = addr
+                    tvStatus.text = getString(R.string.status_service_started)
+                    ivQr.setImageBitmap(QrGenerator.generate(addr, 512))
+                    ivQr.visibility = View.VISIBLE
+                    Toast.makeText(this, "Hidden Service aktiv: $addr", Toast.LENGTH_LONG).show()
+                    println("Onion-Adresse: $addr")
                 }
             },
 
             onError = { error ->
                 runOnUiThread {
+                    tvStatus.text = "Fehler: $error"
                     println("Fehler: $error")
+                    Toast.makeText(this, error, Toast.LENGTH_LONG).show()
                 }
             }
         )
 
-        // Bereits gespeicherte Adresse laden
+        // Bereits gespeicherte Adresse laden und UI aktualisieren
         val savedAddress = onionManager.getSavedOnionAddress()
-
         if (savedAddress != null) {
-            println("Gespeicherte Adresse: $savedAddress")
+            val addr = savedAddress.trim().lowercase()
+            onionStore.add(addr)
+            tvOnionAddress.text = addr
+            println("Gespeicherte Adresse: $addr")
+        }
+
+        // Hidden Service über Intent-API (OrbotOnionManager) starten
+        if (onionManager.isOrbotInstalled()) {
+            onionManager.requestOnionService()
+        } else {
+            AlertDialog.Builder(this)
+                .setTitle("Orbot nicht installiert")
+                .setMessage("Orbot (Tor) ist nicht installiert. Zum Starten des Hidden Service ist Orbot erforderlich.")
+                .setPositiveButton("OK") { _, _ -> }
+                .show()
         }
 
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -156,9 +177,6 @@ class MainActivity : AppCompatActivity() {
                 latestJpeg = bytes
             }
         }
-
-        // Start Hidden Service automatisch beim ersten Start
-        startHiddenService()
 
         // Startzustand: Kamera panel sichtbar, Gallery unsichtbar
         setState(AppState.CAMERA)
