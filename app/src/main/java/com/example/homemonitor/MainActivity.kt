@@ -136,18 +136,22 @@ class MainActivity : AppCompatActivity() {
                 }
             )
 
+            // 1) Zuerst prüfen, ob Adresse intern gespeichert wurde
             val savedAddress = onionManager.getSavedOnionAddress()
             if (savedAddress != null) {
                 try {
                     val addr = savedAddress.trim().lowercase()
                     onionStore.add(addr)
                     tvOnionAddress.text = addr
+                    // Gespeicherte Adresse sofort in UI laden
                 } catch (e: Exception) {
                     Log.e("MainActivity", "Gespeicherte Adresse laden fehlgeschlagen", e)
                     Toast.makeText(this, "Gespeicherte Adresse laden fehlgeschlagen", Toast.LENGTH_SHORT).show()
                 }
             }
 
+            // 2) Adresse beim Neustart wieder bei Orbot beantragen
+            // (damit der Hidden Service aktiv bleibt / neu registriert wird)
             if (onionManager.isOrbotInstalled()) {
                 try {
                     onionManager.requestOnionService()
