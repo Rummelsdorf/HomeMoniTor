@@ -20,8 +20,10 @@ import com.example.homemonitor.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import okhttp3.Request
 import java.net.InetSocketAddress
 import java.net.Proxy
+import java.io.File
 
 /**
  * Haupttätigkeit der App mit zwei Zuständen:
@@ -294,12 +296,37 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Gallery-Feeds aus dem Speicher laden und anzeigen
+    // Thumbnail für eine Onion-Adresse abrufen und lokal speichern (1 Slot pro Eintrag, immer überschrieben)
+    private fun fetchThumbnailForOnion(onion: String) {
+        try {
+            val url = "http://$onion/thumbnail.jpeg"
+            val request = Request.Builder().url(url).header("Accept", "image/jpeg").build()
+            okHttpClient.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val bytes = response.body?.bytes() ?: return
+                    val dir = File(filesDir, "thumbnails")
+                    dir.mkdirs()
+                    // Dateiname basiert auf Onion-Adresse (sanitisiert, 1 pro Eintrag)
+                    val safeName = onion.trim().lowercase().replace(".", "_") + ".jpg"
+                    val file = File(dir, safeName)
+                    file.writeBytes(bytes)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("MainActivity", "Thumbnail-Abruf fehlgeschlagen für $onion", e)
+        }
+    }
+
+    // Gallery-Feeds aus dem Speicher laden und Thumbnails aktualisieren
     private fun loadGalleryFeeds() {
         val addresses = onionStore.addresses
         val adapter = android.widget.ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, addresses)
         lvGalleryFeeds.adapter = adapter
         tvGalleryStatus.text = if (addresses.isEmpty()) "Keine Feed-Adressen" else "${addresses.size} Feed-Adresse(n)"
+        // Für jeden Eintrag Thumbnail abrufen (1 pro Eintrag, überschrieben)
+        for (addr in addresses) {
+            fetchThumbnailForOnion(addr)
+        }
     }
 
     // "Show connection code" - zeigt QR mit Onion-URL

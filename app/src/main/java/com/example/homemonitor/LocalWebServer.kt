@@ -129,6 +129,7 @@ class LocalWebServer private constructor(
 
             when {
                 path.startsWith("/snapshot") -> handleSnapshot(output, query)
+                path.startsWith("/thumbnail") -> handleThumbnail(output)
                 path.startsWith("/sensors") -> handleSensors(output)
                 path.startsWith("/remote_snapshot") -> handleRemoteSnapshot(output, query, okHttpClient)
                 else -> {
@@ -154,6 +155,16 @@ class LocalWebServer private constructor(
         val bytes = snapshotProvider(cam)
         if (bytes == null) {
             sendResponse(output, 404, "text/plain", "Kein Bild verfügbar".toByteArray())
+        } else {
+            sendResponse(output, 200, "image/jpeg", bytes)
+        }
+    }
+
+    // Thumbnail-Endpunkt: kleines Vorschaubild des aktuellen Kamera-Frames
+    private fun handleThumbnail(output: OutputStream) {
+        val bytes = snapshotProvider("back") ?: ByteArray(0)
+        if (bytes.isEmpty()) {
+            sendResponse(output, 404, "text/plain", "Kein Vorschaubild verfügbar".toByteArray())
         } else {
             sendResponse(output, 200, "image/jpeg", bytes)
         }
