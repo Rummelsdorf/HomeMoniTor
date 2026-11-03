@@ -6,6 +6,10 @@ import android.content.pm.PackageManager
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 
+/**
+ * Verwaltet die Anforderung eines V3-Onion-Service über die Intent-API von Orbot.
+ * Speichert die zurückgegebene Onion-Adresse in SharedPreferences.
+ */
 class OrbotOnionManager(
     private val activity: ComponentActivity,
     private val localPort: Int = 8080,
@@ -18,8 +22,17 @@ class OrbotOnionManager(
         private const val ACTION_REQUEST_V3 =
             "org.torproject.android.REQUEST_V3_ONION_SERVICE"
 
+        // Orbot liefert den Hostnamen je nach Version unter unterschiedlichen Extra-Keys.
         private const val EXTRA_HOSTNAME =
             "org.torproject.android.REQUESTED_V3_HOSTNAME"
+
+        private val HOSTNAME_KEYS = arrayOf(
+            "hs_hostname",
+            "hostname",
+            "onion",
+            "onion_address",
+            "org.torproject.android.REQUESTED_V3_HOSTNAME"
+        )
 
         private const val ONION_PORT = 80
     }
@@ -34,8 +47,15 @@ class OrbotOnionManager(
                 return@registerForActivityResult
             }
 
-            val onionAddress =
-                result.data?.getStringExtra(EXTRA_HOSTNAME)
+            val data = result.data
+            var onionAddress: String? = null
+            for (key in HOSTNAME_KEYS) {
+                val v = data?.getStringExtra(key)
+                if (!v.isNullOrBlank() && v.trim().endsWith(".onion")) {
+                    onionAddress = v.trim()
+                    break
+                }
+            }
 
             if (
                 onionAddress.isNullOrBlank() ||
@@ -45,8 +65,10 @@ class OrbotOnionManager(
                 return@registerForActivityResult
             }
 
-            saveOnionAddress(onionAddress)
-            onAddressReceived(onionAddress)
+            // Nach der obigen Prüfung ist die Adresse garantiert nicht null.
+            val resolved = onionAddress!!
+            saveOnionAddress(resolved)
+            onAddressReceived(resolved)
         }
 
     // Orbot-Installation prüfen (Package Visibility nötig)

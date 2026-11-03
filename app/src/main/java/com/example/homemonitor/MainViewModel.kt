@@ -5,27 +5,35 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * ViewModel that holds the state for the main activity.
- * Separates UI logic from data (camera, sensor, network) and survives configuration changes.
+ * ViewModel für die Haupt-Activity.
+ *
+ * Hält den Zustand (aktuellstes Kamera-JPEG und Sensor-JSON) getrennt von der
+ * UI und überlebt Konfigurationsänderungen (z. B. Rotation). Aktuell wird es
+ * noch nicht durchgängig von [MainActivity] verwendet; die Felder sind für
+ * die weitere Entkopplung von UI und Daten vorbereitet.
  */
 class MainViewModel : ViewModel() {
-    // Latest camera snapshot (JPEG bytes)
+    // Aktuellstes Kamerabild (JPEG-Bytes)
     private val _latestJpeg = MutableStateFlow<ByteArray?>(null)
     val latestJpeg: StateFlow<ByteArray?> = _latestJpeg
 
-    // Sensor data (JSON string)
+    // Sensor-Daten (JSON-String)
     private val _sensorJson = MutableStateFlow<String?>(null)
     val sensorJson: StateFlow<String?> = _sensorJson
 
     /**
-     * Update the latest camera snapshot.
+     * Aktualisiert das aktuellste Kamerabild.
+     *
+     * @param bytes JPEG-Bytes des neuen Bildes oder `null`, falls keines verfügbar.
      */
     fun updateLatestJpeg(bytes: ByteArray?) {
         _latestJpeg.value = bytes
     }
 
     /**
-     * Update the sensor JSON string.
+     * Aktualisiert den Sensor-JSON-String.
+     *
+     * @param json JSON-String mit Sensorwerten oder `null`.
      */
     fun updateSensorJson(json: String?) {
         _sensorJson.value = json

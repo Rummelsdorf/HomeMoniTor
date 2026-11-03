@@ -5,7 +5,6 @@ Offene Punkte aus dem Code Review / Folgeaufgaben.
 ## ✅ Erledigt
 
 - [x] SensorManager-Stop / Kamera-Cleanup (`MainActivity.onDestroy`)
-- [x] `DELONION` beim Hidden-Service-Stopp (`OrbotHiddenService.stop`)
 - [x] `android:usesCleartextTraffic` → `false`
 - [x] Bitmap-Downsampling (`inSampleSize`) in der Galerie/Viewer
 - [x] HTTP-Method-Check (405) im lokalen Webserver
@@ -21,7 +20,6 @@ Offene Punkte aus dem Code Review / Folgeaufgaben.
 - [x] `loadSnapshot()` fetchen nun tatsächlich vom Onion-Endpunkt, falls eine gültige Adresse eingegeben wurde
 - [x] `cam`-Parameter (`front`/`back`) wird vom Viewer zur Remote-Anfrage übergeben
 - [x] `EncryptedSharedPreferences` für `OnionStore` (AES-256-GCM) statt Klartext-`SharedPreferences`
-- [x] Onion-Schlüssel in `OrbotHiddenService` ist jetzt verschlüsselt gespeichert
 - [x] Zeitlimit (`soTimeout`) auf lokalen Server-Socket gesetzt (5000 ms)
 - [x] Einfache Rate-Begrenzung (max. 100 gleichzeitige Verbindungen) im `LocalWebServer`
 - [x] OkHttp `dispatcher.executorService` im `onDestroy` heruntergefahren
@@ -29,18 +27,18 @@ Offene Punkte aus dem Code Review / Folgeaufgaben.
 
 ## ⏳ Offene Punkte
 
-- [x] `EncryptedSharedPreferences` in `OnionStore` und `OrbotHiddenService` (Build-Verified: `assembleDebug` OK)
+- [x] `EncryptedSharedPreferences` in `OnionStore` (Build-Verified: `assembleDebug` OK)
 - [x] `gradlew` / `gradle` Wrapper-Workaround durchgeführt (`JAVA_HOME` auf JDK 17 gesetzt)
-- [ ] RSA-Schlüsselgröße auf 2048 Bits erhöhen (`KeyGenParameterSpec.setKeySize(2048)`) — unterstützt ab API 28
-- [ ] RSA-Schlüsselgröße auf 2048 Bits erhöhen (`KeyGenParameterSpec.setKeySize(2048)`) — unterstützt ab API 28
-- [ ] `EncryptedSharedPreferences` in `OrbotHiddenService` für `homemonitor_prefs` umziehen (aktuell nur Key verschlüsselt)
+- [x] `OrbotHiddenService` entfernt – Hidden Service wird ausschließlich über `OrbotOnionManager` (Orbot Intent-API) verwaltet; `ownOnionAddress` wird in `MainActivity` gehalten und `LocalWebServer` über einen Provider bereitgestellt
+- [x] `OrbotOnionManager`: Hostname-Ermittlung über mehrere Extra-Keys robust gemacht (Orbot-Versionen liefern unterschiedliche Keys)
 - [ ] Authentifizierung am Webserver / Hidden Service – laut Entscheidung des Nutzers **nicht erforderlich** (Hidden Service gilt als versteckt genug), aber Optional-Token (`?token=...`) ist implementiert und kann aktiviert werden.
 
 ## 🔒 Security / Privacy
 
 - [ ] Authentifizierung am Webserver / Hidden Service – laut Entscheidung des Nutzers **nicht erforderlich** (Hidden Service gilt als versteckt genug).
-- [x] Verschlüsselte Schlüssel-/Adressspeicherung (`EncryptedSharedPreferences`).
+- [x] Verschlüsselte Schlüssel-/Adressspeicherung (`EncryptedSharedPreferences`) in `OnionStore`.
 - [ ] Zusätzliche Auth-Option (statisches Token) ist implementiert, aber standardmäßig deaktiviert (`authToken = null`).
+- [x] `OrbotHiddenService` entfernt: keine Klartext-/RSA-Schlüsselspeicherung mehr, keine Control-Port-Authentifizierung.
 
 --- Weitere Fehlerquellen (Code-Review 30.10.) ---
 
@@ -50,4 +48,4 @@ Offene Punkte aus dem Code Review / Folgeaufgaben.
 - [ ] `MainActivity`: `latestJpeg` Race Condition (Webserver-Thread + UI-Thread)
 - [ ] `isOrbotAccessible()`: Hintergrund-Thread, aber `finish()` sofort → Dialog könnte nicht sichtbar sein
 - [ ] `BuildConfig.BUILD_DATE`: Gradle-Cache kann altes Datum liefern
-- [ ] `OrbotHiddenService.tryControlPort()`: `ADD_ONION`-Syntax variantenabhängig
+- [x] `OrbotHiddenService` entfernt (ersetzt durch `OrbotOnionManager` Intent-API)

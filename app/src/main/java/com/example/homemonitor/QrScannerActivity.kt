@@ -21,6 +21,10 @@ import com.google.zxing.common.HybridBinarizer
 import com.google.zxing.Result
 import java.util.concurrent.Executors
 
+/**
+ * Activity zum Scannen von QR-Codes (Onion-Adressen) über die Kamera.
+ * Erkannte Adressen werden über den [OnionStore] persistiert.
+ */
 class QrScannerActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityQrScannerBinding
@@ -98,8 +102,11 @@ class QrScannerActivity : AppCompatActivity() {
     private fun handleQrResult(result: Result) {
         val raw = result.text.trim()
         val store = OnionStore.get() ?: OnionStore.init(this)
-        if (store.extractOnion(raw) != null) {
-            store.add(raw)
+        val extracted = store.extractOnion(raw)
+        if (extracted != null) {
+            // Normalisierte Onion-Adresse speichern (nicht den rohen QR-Text),
+            // damit spätere URL-Bildung (http://<onion>/...) korrekt funktioniert.
+            store.add(extracted)
             binding.tvScanResult.text = getString(R.string.scanner_saved)
             Toast.makeText(this, R.string.scanner_saved, Toast.LENGTH_SHORT).show()
         } else {

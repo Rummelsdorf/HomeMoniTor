@@ -19,6 +19,10 @@ import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
+/**
+ * Verwaltet die Kamera (CameraX): Vorschau, Aufnahme und Speicherung in die Galerie.
+ * Singleton; wird an den Lifecycle der Activity gebunden.
+ */
 class CameraManager private constructor(
     private val context: Context,
     private val previewView: PreviewView,
@@ -34,7 +38,7 @@ class CameraManager private constructor(
     var lensFacing: Int = CameraSelector.LENS_FACING_BACK
         private set
 
-    var latestJpeg: ByteArray? = null
+    @Volatile var latestJpeg: ByteArray? = null
         private set
 
     companion object {

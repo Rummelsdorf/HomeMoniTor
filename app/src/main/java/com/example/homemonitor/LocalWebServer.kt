@@ -6,6 +6,7 @@ import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URI
+import java.util.concurrent.atomic.AtomicInteger
 import okhttp3.*
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -36,6 +37,8 @@ class LocalWebServer private constructor(
     private val snapshotProvider: (String) -> ByteArray?,
     private val sensorProvider: () -> String?,
     private val okHttpClient: OkHttpClient,
+    // Liefert die eigene Onion-Adresse dieses Geräts (von OrbotOnionManager).
+    private val onionAddressProvider: () -> String? = { null },
     private val authToken: String? = null
 ) {
 
@@ -50,10 +53,11 @@ class LocalWebServer private constructor(
             snapshotProvider: (String) -> ByteArray?,
             sensorProvider: () -> String?,
             okHttpClient: OkHttpClient,
+            onionAddressProvider: () -> String? = { null },
             authToken: String? = null
         ): LocalWebServer {
             return instance ?: synchronized(this) {
-                instance ?: LocalWebServer(port, snapshotProvider, sensorProvider, okHttpClient, authToken)
+                instance ?: LocalWebServer(port, snapshotProvider, sensorProvider, okHttpClient, onionAddressProvider, authToken)
                     .also { instance = it }
             }
         }
@@ -70,21 +74,21 @@ class LocalWebServer private constructor(
                 serverSocket?.reuseAddress = true
                 serverSocket?.bind(InetSocketAddress("127.0.0.1", port))
                 Log.i("LocalWebServer", "Server auf 127.0.0.1:$port")
-                var openConnections = 0
+                // Thread-sicherer Zähler für offene Verbindungen (Rate-Limit).
+                val openConnections = AtomicInteger(0)
                 while (running) {
                     val client = serverSocket?.accept() ?: break
-                    openConnections++
-                    if (openConnections > 100) {
+                    if (openConnections.incrementAndGet() > 100) {
                         // Einfaches Rate-Limit: zu viele offene Verbindungen abweisen
                         client.close()
-                        openConnections--
+                        openConnections.decrementAndGet()
                         continue
                     }
                     thread(name = "HttpClient", isDaemon = true) {
                         try {
                             handleClient(client)
                         } finally {
-                            openConnections--
+                            openConnections.decrementAndGet()
                         }
                     }
                 }
@@ -220,7 +224,7 @@ class LocalWebServer private constructor(
     }
 
     private fun buildHtml(): String {
-        val addr = OrbotHiddenService.get()?.address ?: "nicht verfügbar"
+        val addr = onionAddressProvider()?.takeIf { it.isNotBlank() } ?: "nicht verfügbar"
         return """
             <html><head><meta charset="utf-8"><title>HomeMoniTor Hidden Service</title>
             <style>body{font-family:sans-serif;background:#222;color:#eee;padding:2em;}
@@ -242,6 +246,8 @@ class LocalWebServer private constructor(
                              contentType: String, body: ByteArray) {
         val statusLine = when (status) {
             200 -> "HTTP/1.1 200 OK"
+            400 -> "HTTP/1.1 400 Bad Request"
+            401 -> "HTTP/1.1 401 Unauthorized"
             404 -> "HTTP/1.1 404 Not Found"
             405 -> "HTTP/1.1 405 Method Not Allowed"
             else -> "HTTP/1.1 $status"

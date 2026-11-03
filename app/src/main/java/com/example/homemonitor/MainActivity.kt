@@ -96,6 +96,9 @@ class MainActivity : AppCompatActivity() {
     private val jpegLock = Any()
     @Volatile private var latestJpeg: ByteArray? = null
 
+    // Eigene Onion-Adresse dieses Geräts (von OrbotOnionManager bereitgestellt).
+    @Volatile private var ownOnionAddress: String? = null
+
     private lateinit var onionManager: OrbotOnionManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -112,6 +115,10 @@ class MainActivity : AppCompatActivity() {
             // Flexibler Port: 8080, 8081, ... prüfen und speichern
             val webPort = findAndStoreFreePort()
 
+            // OnionStore früh initialisieren, damit die gespeicherte Adresse unten
+            // (und der Orbot-Callback) nicht auf eine uninitialisierte lateinit-Variable trifft.
+            onionStore = OnionStore.get() ?: OnionStore.init(this)
+
             onionManager = OrbotOnionManager(
                 activity = this,
                 localPort = webPort,
@@ -120,6 +127,7 @@ class MainActivity : AppCompatActivity() {
                     runOnUiThread {
                         try {
                             val addr = address.trim().lowercase()
+                            ownOnionAddress = addr
                             onionStore.add(addr)
                             tvOnionAddress.text = addr
                             tvStatus.text = getString(R.string.status_service_started)
@@ -150,6 +158,7 @@ class MainActivity : AppCompatActivity() {
             if (savedAddress != null) {
                 try {
                     val addr = savedAddress.trim().lowercase()
+                    ownOnionAddress = addr
                     onionStore.add(addr)
                     tvOnionAddress.text = addr
                     // Gespeicherte Adresse sofort in UI laden
@@ -180,9 +189,7 @@ class MainActivity : AppCompatActivity() {
                 .proxy(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", ORBOT_SOCKS_PORT)))
                 .build()
 
-            initUi()
-            setupListeners()
-
+            // onionStore wurde bereits oben initialisiert (idempotent).
             onionStore = OnionStore.get() ?: OnionStore.init(this)
             sensorManager = SensorManager.get() ?: SensorManager.init(this)
             sensorManager.start()
@@ -190,7 +197,8 @@ class MainActivity : AppCompatActivity() {
                 webPort,
                 { cam -> latestJpeg },
                 { sensorManager.collectJson() },
-                okHttpClient
+                okHttpClient,
+                { ownOnionAddress }
             )
             cameraManager = CameraManager.get() ?: CameraManager.init(this, binding.cameraPreview) { bytes ->
                 synchronized(jpegLock) {
@@ -266,8 +274,9 @@ class MainActivity : AppCompatActivity() {
             tvStatus.text = getString(R.string.status_service_started)
         }
         btnStopService.setOnClickListener {
+            // Lokalen Webserver stoppen. Der Hidden Service selbst wird von Orbot
+            // verwaltet (OrbotOnionManager); hier wird nur der lokale Endpunkt beendet.
             localWebServer.stop()
-            OrbotHiddenService.get()?.stop()
             tvStatus.text = getString(R.string.status_service_stopped)
         }
         btnFlipCamera.setOnClickListener { cameraManager.flip() }
@@ -306,7 +315,7 @@ class MainActivity : AppCompatActivity() {
     // Thumbnail für eine Onion-Adresse abrufen und lokal speichern (1 Slot pro Eintrag, immer überschrieben)
     private fun fetchThumbnailForOnion(onion: String) {
         try {
-            val url = "http://$onion/thumbnail.jpeg"
+            val url = "http://$onion/thumbnail"
             val request = Request.Builder().url(url).header("Accept", "image/jpeg").build()
             okHttpClient.newCall(request).execute().use { response ->
                 if (response.isSuccessful) {
@@ -330,10 +339,14 @@ class MainActivity : AppCompatActivity() {
         val adapter = android.widget.ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, addresses)
         lvGalleryFeeds.adapter = adapter
         tvGalleryStatus.text = if (addresses.isEmpty()) "Keine Feed-Adressen" else "${addresses.size} Feed-Adresse(n)"
-        // Für jeden Eintrag Thumbnail abrufen (1 pro Eintrag, überschrieben)
-        for (addr in addresses) {
-            fetchThumbnailForOnion(addr)
-        }
+        // Für jeden Eintrag Thumbnail abrufen (1 pro Eintrag, überschrieben).
+        // Netzwerk-I/O darf nicht im UI-Thread laufen (NetworkOnMainThreadException),
+        // daher im Hintergrund ausführen.
+        Thread {
+            for (addr in addresses) {
+                fetchThumbnailForOnion(addr)
+            }
+        }.start()
     }
 
     // "Show connection code" - zeigt QR mit Onion-URL
@@ -390,8 +403,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        sensorManager.stop()
-        cameraManager.shutdown()
+        try { sensorManager.stop() } catch (e: Exception) { }
+        try { cameraManager.shutdown() } catch (e: Exception) { }
+        // Lokalen Webserver und dessen Socket/Threads ebenfalls beenden.
+        try { localWebServer.stop() } catch (e: Exception) { }
         try { okHttpClient.dispatcher.executorService.shutdown() } catch (e: Exception) { }
     }
 
