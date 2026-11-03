@@ -46,7 +46,8 @@ class LocalWebServer private constructor(
     @Volatile private var running = false
 
     companion object {
-        @Volatile private var instance: LocalWebServer? = null
+        @Volatile private var thumbnailBuffer: ByteArray? = null
+    @Volatile private var instance: LocalWebServer? = null
 
         fun init(
             port: Int,
@@ -68,6 +69,7 @@ class LocalWebServer private constructor(
     fun start() {
         if (running) return
         running = true
+        startThumbnailRefresher()
         thread(name = "LocalWebServer", isDaemon = true) {
             try {
                 serverSocket = ServerSocket()
@@ -94,6 +96,23 @@ class LocalWebServer private constructor(
                 }
             } catch (e: Exception) {
                 if (running) Log.e("LocalWebServer", "Server-Fehler", e)
+            }
+        }
+    }
+
+    // Periodischer Thumbnail-Refresh: alle 5 Sekunden das aktuelle Kamerabild holen und puffern
+    private fun startThumbnailRefresher() {
+        thread(name = "ThumbnailRefresher", isDaemon = true) {
+            while (running) {
+                try {
+                    val bytes = snapshotProvider("back")
+                    if (bytes != null && bytes.isNotEmpty()) {
+                        thumbnailBuffer = bytes
+                    }
+                } catch (e: Exception) {
+                    Log.w("LocalWebServer", "Thumbnail-Refresh fehlgeschlagen", e)
+                }
+                Thread.sleep(5000)
             }
         }
     }
@@ -164,9 +183,9 @@ class LocalWebServer private constructor(
         }
     }
 
-    // Thumbnail-Endpunkt: kleines Vorschaubild des aktuellen Kamera-Frames
+    // Thumbnail-Endpunkt: liefert das alle 5 Sekunden aktualisierte Vorschaubild
     private fun handleThumbnail(output: OutputStream) {
-        val bytes = snapshotProvider("back") ?: ByteArray(0)
+        val bytes = thumbnailBuffer ?: ByteArray(0)
         if (bytes.isEmpty()) {
             sendResponse(output, 404, "text/plain", "Kein Vorschaubild verfügbar".toByteArray())
         } else {
