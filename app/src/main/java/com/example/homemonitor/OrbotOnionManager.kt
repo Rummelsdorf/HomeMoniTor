@@ -3,6 +3,7 @@ package com.example.homemonitor
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 
@@ -19,8 +20,13 @@ class OrbotOnionManager(
     companion object {
         private const val ORBOT_PACKAGE = "org.torproject.android"
 
-        private const val ACTION_REQUEST_V3 =
-            "org.torproject.android.REQUEST_V3_ONION_SERVICE"
+        // Mögliche Intent-Aktionen je nach Orbot-Version (ältere/neue Schnittstellen)
+        private val ACTION_CANDIDATES = arrayOf(
+            "org.torproject.android.REQUEST_V3_ONION_SERVICE",
+            "org.torproject.android.START_ONION",
+            "org.torproject.android.REQUEST_ONION_SERVICE",
+            "org.torproject.android.REQUEST_V3_ONION"
+        )
 
         // Orbot liefert den Hostnamen je nach Version unter unterschiedlichen Extra-Keys.
         private const val EXTRA_HOSTNAME =
@@ -92,18 +98,37 @@ class OrbotOnionManager(
             return
         }
 
-        val intent = Intent(ACTION_REQUEST_V3).apply {
+        val intent = Intent(ACTION_CANDIDATES[0]).apply {
             setPackage(ORBOT_PACKAGE)
-
             putExtra("localPort", localPort)
             putExtra("onionPort", ONION_PORT)
-            putExtra("name", "Meine Android App")
+            putExtra("name", "HomeMoniTor")
         }
 
+        // Falls die primäre Aktion keinen Empfänger findet, Alternativen durchprobieren
+        val fallbackActions = ACTION_CANDIDATES.drop(1)
+        var lastError: Exception? = null
         try {
             launcher.launch(intent)
         } catch (e: Exception) {
-            onError("Orbot konnte nicht gestartet werden: ${e.message}")
+            lastError = e
+            Log.w("OrbotOnionManager", "Primäre Orbot-Aktion fehlgeschlagen, probiere Fallbacks", e)
+            for (action in fallbackActions) {
+                try {
+                    val fallback = Intent(action).apply {
+                        setPackage(ORBOT_PACKAGE)
+                        putExtra("localPort", localPort)
+                        putExtra("onionPort", ONION_PORT)
+                        putExtra("name", "HomeMoniTor")
+                    }
+                    launcher.launch(fallback)
+                    return // Erfolgreich gestartet
+                } catch (e2: Exception) {
+                    Log.w("OrbotOnionManager", "Fallback-Aktion fehlgeschlagen: $action", e2)
+                    lastError = e2
+                }
+            }
+            onError("Orbot konnte nicht gestartet werden: ${lastError?.message}")
         }
     }
 
