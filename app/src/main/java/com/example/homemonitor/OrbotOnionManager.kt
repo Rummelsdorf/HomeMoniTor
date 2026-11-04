@@ -1,15 +1,22 @@
 package com.example.homemonitor
 
-import android.app.Activity
+import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
+import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.os.IBinder
 import android.util.Log
 import androidx.activity.ComponentActivity
-import androidx.activity.result.contract.ActivityResultContracts
 
 /**
  * Verwaltet die Anforderung eines V3-Onion-Service über die Intent-API von Orbot.
  * Speichert die zurückgegebene Onion-Adresse in SharedPreferences.
+ *
+ * Hinweis: Orbot ist laut offizieller Manifest-Analyse ein
+ * `BIND_VPN_SERVICE`-geschützter Service (`exported=true`), kein extern
+ * aufrufbarer Activity. Daher wird der Service hier per
+ * `Context.BIND_AUTO_CREATE` + VPN-Action gebunden statt per Activity-Intent.
  */
 class OrbotOnionManager(
     private val activity: ComponentActivity,
@@ -20,16 +27,8 @@ class OrbotOnionManager(
     companion object {
         private const val ORBOT_PACKAGE = "org.torproject.android"
 
-        // Mögliche Intent-Aktionen je nach Orbot-Version (ältere/neue Schnittstellen)
-        private val ACTION_CANDIDATES = arrayOf(
-            "org.torproject.android.REQUEST_V3_ONION_SERVICE",
-            "org.torproject.android.START_ONION",
-            "org.torproject.android.REQUEST_ONION_SERVICE",
-            "org.torproject.android.START_V3_ONION_SERVICE",
-            "org.torproject.android.ONION_SERVICE_REQUEST",
-            "org.torproject.android.CREATE_ONION",
-            "org.torproject.android.START_ORBOT"
-        )
+        // Service-Interface von Orbot (VPN-basierter Service)
+        private const val SERVICE_INTERFACE = "android.net.VpnService"
 
         // Orbot liefert den Hostnamen je nach Version unter unterschiedlichen Extra-Keys.
         private const val EXTRA_HOSTNAME =
@@ -46,41 +45,17 @@ class OrbotOnionManager(
         private const val ONION_PORT = 80
     }
 
-    private val launcher =
-        activity.registerForActivityResult(
-            ActivityResultContracts.StartActivityForResult()
-        ) { result ->
-
-            if (result.resultCode != Activity.RESULT_OK) {
-                onError("Orbot hat die Anfrage nicht bestätigt.")
-                return@registerForActivityResult
-            }
-
-            val data = result.data
-            var onionAddress: String? = null
-            for (key in HOSTNAME_KEYS) {
-                val v = data?.getStringExtra(key)
-                if (!v.isNullOrBlank() && v.trim().endsWith(".onion")) {
-                    onionAddress = v.trim()
-                    break
-                }
-            }
-
-            if (
-                onionAddress.isNullOrBlank() ||
-                !onionAddress.endsWith(".onion")
-            ) {
-                onError("Keine gültige Onion-Adresse zurückgegeben.")
-                return@registerForActivityResult
-            }
-
-            // Nach der obigen Prüfung ist die Adresse garantiert nicht null.
-            val resolved = onionAddress!!
-            saveOnionAddress(resolved)
-            onAddressReceived(resolved)
+    private val serviceConnection: ServiceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName, binder: IBinder) {
+            Log.i("OrbotOnionManager", "OrbotService verbunden: $name")
+            // Hier können Onion-/Service-Callbacks gefeuert werden.
         }
 
-    // Orbot-Installation prüfen (Package Visibility nötig)
+        override fun onServiceDisconnected(name: ComponentName) {
+            Log.w("OrbotOnionManager", "OrbotService getrennt: $name")
+        }
+    }
+
     fun isOrbotInstalled(): Boolean {
         return try {
             activity.packageManager.getPackageInfo(
@@ -93,6 +68,22 @@ class OrbotOnionManager(
         }
     }
 
+    // Binden an den Orbot-Service über VPN-Intent
+    fun bindOrbotService() {
+        if (isOrbotInstalled()) {
+            val intent = Intent(SERVICE_INTERFACE).apply {
+                setPackage(ORBOT_PACKAGE)
+            }
+            activity.bindService(
+                intent,
+                serviceConnection,
+                Context.BIND_AUTO_CREATE
+            )
+        } else {
+            onError("Orbot ist nicht installiert.")
+        }
+    }
+
     // V3-Onion-Service über Intent-API an Orbot senden
     // Ergebnis wird über ActivityResultContracts.StartActivityForResult zurückgegeben
     fun requestOnionService() {
@@ -101,37 +92,13 @@ class OrbotOnionManager(
             return
         }
 
-        val intent = Intent(ACTION_CANDIDATES[0]).apply {
-            setPackage(ORBOT_PACKAGE)
-            putExtra("localPort", localPort)
-            putExtra("onionPort", ONION_PORT)
-            putExtra("name", "HomeMoniTor")
-        }
+        // Binde an den VPN-basierten OrbotService
+        bindOrbotService()
 
-        // Falls die primäre Aktion keinen Empfänger findet, Alternativen durchprobieren
-        val fallbackActions = ACTION_CANDIDATES.drop(1)
-        var lastError: Exception? = null
-        try {
-            launcher.launch(intent)
-        } catch (e: Exception) {
-            lastError = e
-            Log.w("OrbotOnionManager", "Primäre Orbot-Aktion fehlgeschlagen, probiere Fallbacks", e)
-            for (action in fallbackActions) {
-                try {
-                    val fallback = Intent(action).apply {
-                        setPackage(ORBOT_PACKAGE)
-                        putExtra("localPort", localPort)
-                        putExtra("onionPort", ONION_PORT)
-                        putExtra("name", "HomeMoniTor")
-                    }
-                    launcher.launch(fallback)
-                    return // Erfolgreich gestartet
-                } catch (e2: Exception) {
-                    Log.w("OrbotOnionManager", "Fallback-Aktion fehlgeschlagen: $action", e2)
-                    lastError = e2
-                }
-            }
-            onError("Orbot konnte nicht gestartet werden: ${lastError?.message}")
+        // Fallback: Adresse laden / anzeigen
+        val savedAddress = getSavedOnionAddress()
+        if (savedAddress != null) {
+            onAddressReceived(savedAddress)
         }
     }
 
@@ -139,7 +106,7 @@ class OrbotOnionManager(
     private fun saveOnionAddress(address: String) {
         activity.getSharedPreferences(
             "onion_service",
-            Activity.MODE_PRIVATE
+            Context.MODE_PRIVATE
         ).edit()
             .putString("onion_address", address)
             .apply()
@@ -149,7 +116,7 @@ class OrbotOnionManager(
     fun getSavedOnionAddress(): String? {
         return activity.getSharedPreferences(
             "onion_service",
-            Activity.MODE_PRIVATE
+            Context.MODE_PRIVATE
         ).getString("onion_address", null)
     }
 }
