@@ -25,7 +25,10 @@ class OrbotOnionManager(
             "org.torproject.android.REQUEST_V3_ONION_SERVICE",
             "org.torproject.android.START_ONION",
             "org.torproject.android.REQUEST_ONION_SERVICE",
-            "org.torproject.android.REQUEST_V3_ONION"
+            "org.torproject.android.START_V3_ONION_SERVICE",
+            "org.torproject.android.ONION_SERVICE_REQUEST",
+            "org.torproject.android.CREATE_ONION",
+            "org.torproject.android.START_ORBOT"
         )
 
         // Orbot liefert den Hostnamen je nach Version unter unterschiedlichen Extra-Keys.
