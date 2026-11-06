@@ -315,7 +315,7 @@ class MainActivity : AppCompatActivity() {
     // Thumbnail für eine Onion-Adresse abrufen und lokal speichern (1 Slot pro Eintrag, immer überschrieben)
     private fun fetchThumbnailForOnion(onion: String) {
         try {
-            val url = "http://$onion/thumbnail"
+            val url = "http://$onion/thumbnail.jpeg"
             val request = Request.Builder().url(url).header("Accept", "image/jpeg").build()
             okHttpClient.newCall(request).execute().use { response ->
                 if (response.isSuccessful) {
