@@ -99,7 +99,7 @@ class MainActivity : AppCompatActivity() {
     // Eigene Onion-Adresse dieses Geräts (von OrbotOnionManager bereitgestellt).
     @Volatile private var ownOnionAddress: String? = null
 
-    private lateinit var onionManager: OrbotOnionManager
+    private lateinit var torManager: TorManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -119,42 +119,27 @@ class MainActivity : AppCompatActivity() {
             // (und der Orbot-Callback) nicht auf eine uninitialisierte lateinit-Variable trifft.
             onionStore = OnionStore.get() ?: OnionStore.init(this)
 
-            onionManager = OrbotOnionManager(
-                activity = this,
-                localPort = webPort,
-
-                onAddressReceived = { address ->
-                    runOnUiThread {
-                        try {
-                            val addr = address.trim().lowercase()
-                            ownOnionAddress = addr
-                            onionStore.add(addr)
-                            tvOnionAddress.text = addr
-                            tvStatus.text = getString(R.string.status_service_started)
-                            ivQr.setImageBitmap(QrGenerator.generate(addr, 512))
-                            ivQr.visibility = View.VISIBLE
-                            Toast.makeText(this, "Hidden Service aktiv: $addr", Toast.LENGTH_LONG).show()
-                        } catch (e: Exception) {
-                            Log.e("MainActivity", "Callback Fehler", e)
-                            Toast.makeText(this, "Fehler bei Onion-Antwort: ${e.message}", Toast.LENGTH_LONG).show()
-                        }
-                    }
-                },
-
-                onError = { error ->
-                    runOnUiThread {
-                        try {
-                            tvStatus.text = "Fehler: $error"
-                            Toast.makeText(this, error, Toast.LENGTH_LONG).show()
-                        } catch (e: Exception) {
-                            Log.e("MainActivity", "Callback Fehler", e)
-                        }
+            torManager = TorManager(this, webPort)
+            torManager.setOnAddressReady { address ->
+                runOnUiThread {
+                    try {
+                        val addr = address.trim().lowercase()
+                        ownOnionAddress = addr
+                        onionStore.add(addr)
+                        tvOnionAddress.text = addr
+                        tvStatus.text = getString(R.string.status_service_started)
+                        ivQr.setImageBitmap(QrGenerator.generate(addr, 512))
+                        ivQr.visibility = View.VISIBLE
+                        Toast.makeText(this, "Hidden Service aktiv: $addr", Toast.LENGTH_LONG).show()
+                    } catch (e: Exception) {
+                        Log.e("MainActivity", "Callback Fehler", e)
+                        Toast.makeText(this, "Fehler bei Onion-Antwort: ${e.message}", Toast.LENGTH_LONG).show()
                     }
                 }
-            )
+            }
 
             // 1) Zuerst prüfen, ob Adresse intern gespeichert wurde
-            val savedAddress = onionManager.getSavedOnionAddress()
+            val savedAddress = torManager.getSavedOnionAddress()
             if (savedAddress != null) {
                 try {
                     val addr = savedAddress.trim().lowercase()
@@ -168,22 +153,8 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            // 2) Adresse beim Neustart wieder bei Orbot beantragen
-            // (damit der Hidden Service aktiv bleibt / neu registriert wird)
-            if (onionManager.isOrbotInstalled()) {
-                try {
-                    onionManager.requestOnionService()
-                } catch (e: Exception) {
-                    Log.e("MainActivity", "Orbot Request fehlgeschlagen", e)
-                    Toast.makeText(this, "Orbot-Request fehlgeschlagen: ${e.message}", Toast.LENGTH_LONG).show()
-                }
-            } else {
-                AlertDialog.Builder(this)
-                    .setTitle("Orbot nicht installiert")
-                    .setMessage("Orbot (Tor) ist nicht installiert. Zum Starten des Hidden Service ist Orbot erforderlich.")
-                    .setPositiveButton("OK") { _, _ -> }
-                    .show()
-            }
+            // 2) Tor direkt: Hidden Service starten (Address via Callback)
+            torManager.start()
 
             okHttpClient = OkHttpClient.Builder()
                 .proxy(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", ORBOT_SOCKS_PORT)))
