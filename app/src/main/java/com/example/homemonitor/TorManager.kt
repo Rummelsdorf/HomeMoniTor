@@ -25,6 +25,7 @@ class TorManager(
     private var serviceId: String? = null
     @Volatile private var running: Boolean = false
     private var onAddressReady: ((String) -> Unit)? = null
+    private var torProcess: Process? = null
 
     fun setOnAddressReady(l: (String) -> Unit) {
         onAddressReady = l
@@ -34,6 +35,7 @@ class TorManager(
         @Volatile private var instance: TorManager? = null
 
         private const val TOR_CONTROL_PORT = 9051
+        private const val TOR_EXECUTABLE = "/data/data/org.torproject.tor/bin/tor"
         private const val KEY_ONION_KEY = "tor_onion_key_v1"
         private const val ONION_LIFETIME_SECONDS = 31536000
 
@@ -46,6 +48,16 @@ class TorManager(
 
     fun start(): Boolean {
         if (running) return true
+        // Embedded Tor-Binary start (Tor Open Source Stack direkt in der App integriert)
+        val cmd = listOf(
+            TOR_EXECUTABLE,
+            "--SocksPort=9050",
+            "--ControlPort=9051",
+            "--DataDir=${context.filesDir}/tor",
+            "--HiddenServiceDir=${context.filesDir}/tor/hidden",
+            "--HiddenServicePort=$localPort,127.0.0.1:$localPort"
+        )
+        torProcess = ProcessBuilder(cmd).start()
         running = true
         thread(name = "TorManager", isDaemon = true) { tryAddress() }
         return true
@@ -53,6 +65,9 @@ class TorManager(
 
     fun stop() {
         running = false
+        try { torProcess?.destroy() } catch (e: Exception) { }
+        try { torProcess?.waitFor() } catch (e: Exception) { }
+        torProcess = null
         address = null
         serviceId = null
     }
